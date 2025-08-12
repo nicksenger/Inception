@@ -1,0 +1,23 @@
+[package]
+name = "inception-macros"
+description = "Macros for Inception"
+authors = ["Nick Senger <dev@nsenger.com>"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/nicksenger/inception"
+categories = ["science"]
+keywords = ["science", "no_std", "metaprogramming", "types", "dinosaurs"]
+rust-version = "1.84"
+version = "0.1.0"
+
+[lib]
+proc-macro = true
+
+[features]
+default = []
+
+[dependencies]
+deluxe = { workspace = true }
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+syn = { features = ["full"], workspace = true }
