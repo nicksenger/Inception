@@ -1,0 +1,15 @@
+[package]
+name = "inception-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+inception = { workspace = true }
+
+[dev-dependencies]
+criterion = "0.7"
+
+[[bench]]
+name = "comparison"
+harness = false
+

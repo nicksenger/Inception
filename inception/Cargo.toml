@@ -1,0 +1,18 @@
+[package]
+name = "inception"
+description = "Automatic Trait Implementation by Induction"
+authors = ["Nick Senger"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/nicksenger/inception"
+categories = ["science"]
+keywords = ["science", "no_std", "metaprogramming", "types", "dinosaurs"]
+rust-version = "1.84"
+version = "0.1.0"
+
+[features]
+default = ["opt"]
+opt = []
+
+[dependencies]
+inception-macros.workspace = true
