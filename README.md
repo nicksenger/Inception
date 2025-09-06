@@ -95,7 +95,9 @@ pub trait ArtificallyIntelligible { .. }
 #[inception( .. )]
 pub trait Profitable { .. }
 
-// `Cobb`, `Fischer`, `Character` and whatever other types have been annotated with #[derive(Inception)] now implement these behaviors 
+// `Cobb`, `Fischer`, `Character` and whatever other types have been annotated 
+// with #[derive(Inception)] now implement these behaviors, so long as their minimal
+// substructures are primitives of the behavior in question.
 ```
 
 Now I will show the exact same code with all macros expanded. I'll try to add more comments to this whenever I have time, wherever I think they may be useful.
@@ -338,8 +340,8 @@ impl<X: ::inception::Property> ::inception::Inception<X, ::inception::False> for
     }
 }
 
-// Ideally everything from here down wouldn't live in a macro at all. It makes things more 
-// difficult though, and I couldn't figure it out.
+// Ideally everything from here down wouldn't live in a macro at all. Having them back in the main 
+// library makes things more difficult though (where-bound-hell), and I couldn't figure it out.
 pub struct SameSame;
 pub trait Same {
     fn same(&self, _other: &Self) -> bool;
