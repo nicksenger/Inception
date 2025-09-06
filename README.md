@@ -2,6 +2,35 @@
 
 > Given a type `T`, if we can prove some property exists for all of `T`'s minimal substructures, and all of `T`'s immediate substructures, then this property must also hold for `T` itself.
 
+Some have asked just to see the essential generated code, so here is a best-effort summary of the output of the attribute macro which provides the blanket implementation (using something like `Debug` as an example, because return types and arguments add additional complexity) This doesn't work, it's just what it might look like with as much incidental complexity removed as possible: 
+
+```rust
+impl my_debug::Inductive for EmptyList {
+    fn print(&self) -> String {
+        my_trait::nothing()
+    }
+}
+
+impl<Head, Tail> my_debug::Inductive for List<(Head, Tail)> where Head: MyDebug, Tail: Fields + MyDebug {
+    fn print(&self) -> String {
+        let (head, tail) = (&self.0.0, &self.0.1);
+        my_trait::merge(head, tail)
+    }
+}
+
+impl<T> my_debug::Inductive for T where T: Fields + MyDebug {
+    fn print(&self) -> String {
+        my_trait::join(self.fields())
+    }
+}
+
+impl<T> MyDebug for T where T: my_debug::Inductive {
+    fn print(&self) -> String {
+        self.print()
+    }
+}
+```
+
 I'm not a mathematician, but I gather this is generally referred to as "structural" or "well-founded" induction, a concept first introduced in 1917 by Dmitry Mirimanoff.
 
 Though people have known about this for over 100 years, as far as I know the Rust compiler doesn't provide a means for us to apply it to our own types and behaviors in any useful way. _Inception_ attempts to change that - not by direct modification of the compiler (that would be cheating!), but instead by persuasion. The goal is to "teach" the existing compiler that Mirimanoff's methods are, as he originally demonstrated, logically valid. And this lesson will be administered to the compiler from user code, by force or by fire.
