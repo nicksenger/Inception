@@ -2,29 +2,29 @@
 
 > Given a type `T`, if we can prove some property exists for all of `T`'s minimal substructures, and all of `T`'s immediate substructures, then this property must also hold for `T` itself.
 
-Some have asked just to see the essential generated code, so here is a best-effort summary of the output of the attribute macro which provides the blanket implementation (using something like `Debug` as an example, because return types and arguments add additional complexity) This doesn't work, it's just what it might look like with as much incidental complexity removed as possible: 
+Some have asked just to see the essential generated code, so here is a best-effort summary of the output of the macro which provides the blanket implementation (using something like a custom `ToString` as an example) This code doesn't actually work, it's just what it might look like with as much incidental complexity removed as possible: 
 
 ```rust
-impl my_debug::Inductive for EmptyList {
+impl my_tostring::Inductive for EmptyList {
     fn print(&self) -> String {
         my_trait::nothing()
     }
 }
 
-impl<Head, Tail> my_debug::Inductive for List<(Head, Tail)> where Head: MyDebug, Tail: Fields + MyDebug {
+impl<Head, Tail> my_tostring::Inductive for List<(Head, Tail)> where Head: MyToString, Tail: Fields + MyToString {
     fn print(&self) -> String {
         let (head, tail) = (&self.0.0, &self.0.1);
         my_trait::merge(head, tail)
     }
 }
 
-impl<T> my_debug::Inductive for T where T: Fields + MyDebug {
+impl<T> my_tostring::Inductive for T where T: Fields + MyToString {
     fn print(&self) -> String {
         my_trait::join(self.fields())
     }
 }
 
-impl<T> MyDebug for T where T: my_debug::Inductive {
+impl<T> MyToString for T where T: my_tostring::Inductive {
     fn print(&self) -> String {
         self.print()
     }
