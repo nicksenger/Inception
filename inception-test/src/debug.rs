@@ -1,6 +1,6 @@
 use inception::{field::VarField, meta::VariantMeta, *};
 
-#[inception(property = Ty)]
+#[inception(property = DebugTy)]
 trait DiagTy {
     fn diag() -> String;
 
@@ -37,38 +37,38 @@ trait DiagTy {
     }
 }
 
-#[primitive(property = Ty)]
+#[primitive(property = DebugTy)]
 impl DiagTy for u8 {
     fn diag() -> String {
         "u8".to_string()
     }
 }
-#[primitive(property = Ty)]
+#[primitive(property = DebugTy)]
 impl DiagTy for u64 {
     fn diag() -> String {
         "u64".to_string()
     }
 }
-#[primitive(property = Ty)]
+#[primitive(property = DebugTy)]
 impl DiagTy for u128 {
     fn diag() -> String {
         "u128".to_string()
     }
 }
-#[primitive(property = Ty)]
+#[primitive(property = DebugTy)]
 impl DiagTy for String {
     fn diag() -> String {
         "String".to_string()
     }
 }
-#[primitive(property = Ty)]
+#[primitive(property = DebugTy)]
 impl DiagTy for VariantHeader {
     fn diag() -> String {
         "__variant__".to_string()
     }
 }
 
-#[inception(property = Ref)]
+#[inception(property = DebugRef)]
 pub trait DiagRef {
     fn print(&self) -> String;
 
@@ -120,31 +120,31 @@ pub trait DiagRef {
     }
 }
 
-#[primitive(property = Ref)]
+#[primitive(property = DebugRef)]
 impl DiagRef for u8 {
     fn print(&self) -> String {
         self.to_string()
     }
 }
-#[primitive(property = Ref)]
+#[primitive(property = DebugRef)]
 impl DiagRef for u64 {
     fn print(&self) -> String {
         self.to_string()
     }
 }
-#[primitive(property = Ref)]
+#[primitive(property = DebugRef)]
 impl DiagRef for u128 {
     fn print(&self) -> String {
         self.to_string()
     }
 }
-#[primitive(property = Ref)]
+#[primitive(property = DebugRef)]
 impl DiagRef for String {
     fn print(&self) -> String {
         self.clone()
     }
 }
-#[primitive(property = Ref)]
+#[primitive(property = DebugRef)]
 impl DiagRef for VariantHeader {
     fn print(&self) -> String {
         "__variant__".to_string()

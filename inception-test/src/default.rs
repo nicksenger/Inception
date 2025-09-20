@@ -1,6 +1,6 @@
 use inception::*;
 
-#[inception(property = Def)]
+#[inception(property = Default)]
 pub trait Standard {
     fn standard() -> Self;
 
@@ -19,36 +19,36 @@ pub trait Standard {
     ) -> <Self as Fields>::Owned {
         List((VarOwnedField::new(H::standard()), R::standard()))
     }
-    fn join<F: Standard<Ret = <T as Inception<Def>>::OwnedFields>>(_fields: F) -> Self {
-        <Self as Inception<Def>>::from_fields(F::standard())
+    fn join<F: Standard<Ret = <T as Inception<Default>>::OwnedFields>>(_fields: F) -> Self {
+        <Self as Inception<Default>>::from_fields(F::standard())
     }
 }
 
-#[primitive(property = Def)]
+#[primitive(property = Default)]
 impl Standard for u8 {
     fn standard() -> Self {
         0
     }
 }
-#[primitive(property = Def)]
+#[primitive(property = Default)]
 impl Standard for u64 {
     fn standard() -> Self {
         0
     }
 }
-#[primitive(property = Def)]
+#[primitive(property = Default)]
 impl Standard for u128 {
     fn standard() -> Self {
         0
     }
 }
-#[primitive(property = Def)]
+#[primitive(property = Default)]
 impl Standard for String {
     fn standard() -> Self {
-        Default::default()
+        std::default::Default::default()
     }
 }
-#[primitive(property = Def)]
+#[primitive(property = Default)]
 impl Standard for VariantHeader {
     fn standard() -> Self {
         VariantHeader

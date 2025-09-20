@@ -1,3 +1,8 @@
+In case you are short on time: this is _not_ currently "better" than using a derive macro in any way for the vast majority of potential use-cases. It is more of an academic curiosity than anything at this point.
+
+I suspect there are some more interesting uses for this aside from achieving what we can already do with derive macros, but that's all I've looked at since it was the obvious application. If you are aware of or interested in other potential use-cases for this work, please reach out! I'd love to hear any thoughts. 
+
+
 ### _Inception_ explores the following concept in Rust
 
 > Given a type `T`, if we can prove some property exists for all of `T`'s minimal substructures, and all of `T`'s immediate substructures, then this property must also hold for `T` itself.
@@ -18,13 +23,13 @@ pub struct TwoFish {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct NumberedFishes {
-    one: OneFish,
-    two: TwoFish
+pub enum NumberedFishes {
+    One(OneFish),
+    Two(TwoFish)
 }
 ```
 
-Code expecting the constituent fields to implement the respective trait will be generated for each of these derives. But what if we could just have a single derive which provides the field information at compile time to any (if opt-out) or a select few (if opt-in) trait implementations automatically? Then we would only need to generate code once to achieve identical behavior.
+Code expecting the constituent fields to implement the respective trait will be generated for each of these derives. But what if we could just have a single derive which provides the field information at compile time to any trait implementations automatically? Then we would only need to generate code once to achieve identical behavior.
 
 ```rust
 #[derive(Inception)]
@@ -40,17 +45,39 @@ pub struct TwoFish {
 }
 
 #[derive(Inception)]
-pub struct NumberedFishes {
-    one: OneFish,
-    two: TwoFish
+pub enum NumberedFishes {
+    One(OneFish),
+    Two(TwoFish)
+}
+
+// Or, as opt-in. The same amount of code is generated regardless of the number of properties.
+mod opt_in {
+    #[derive(Inception)]
+    #[inception(properties = [Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize])]
+    pub struct OneFish {
+        name: String,
+        age: u32
+    }
+
+    #[derive(Inception)]
+    #[inception(properties = [Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize])]
+    pub struct TwoFish {
+        id: u64,
+        size: i32
+    }
+
+    #[derive(Inception)]
+    #[inception(properties = [Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize])]
+    pub enum NumberedFishes {
+        One(OneFish),
+        Two(TwoFish)
+    }
 }
 ```
 
-This is similar to the experience provided by [Facet](https://crates.io/crates/facet) and other reflection crates, but in this case we will instead use type-level reflection to make the trait solver and monomorphization achieve what would normally be done with a macro. No dynamic dispatch, and theoretically, no additional runtime overhead compared to a derive.
+This is similar to the experience provided by [Facet](https://crates.io/crates/facet) and other runtime reflection crates, but in this case we will use type-level reflection to have the trait solver and monomorphization achieve, in effect, what would normally be achieved by a macro. No dynamic dispatch is required, no type information is lost, and, at least in theory, no additional runtime overhead should be incurred compared to a derive. We will just reach the same destination by a different compilation path.
 
-The mathematical term for this is "structural" or "well-founded" induction, a concept first introduced in 1917 by Dmitry Mirimanoff.
-
-While we won't sacrifice memory or type safety in order to achieve this, we'll have to employ a fair bit of type-level programming, and so the resulting code will not necessarily be idiomatic.
+This can be achieved through "structural" or "well-founded" induction, a concept first introduced in 1917 by a mathematician named Dmitry Mirimanoff. While we won't sacrifice memory or type safety in order to do this in Rust over a century later, we _will_ have to employ a fair bit of type-level programming in what could definitely be labeled a _mis_-use of the trait solver, so the resulting code will not necessarily be idiomatic.
 
 ### Approach
 

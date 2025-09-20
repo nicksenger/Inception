@@ -24,6 +24,7 @@ pub use field::{
 pub use ty::Nothing;
 
 pub trait Property {}
+pub trait OptIn<T: DataType> {}
 
 pub trait Inception<X: Property, P: TruthValue = <Self as IsPrimitive<X>>::Is>:
     IsPrimitive<X> + DataType

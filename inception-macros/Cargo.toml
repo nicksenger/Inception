@@ -14,7 +14,8 @@ version = "0.1.0"
 proc-macro = true
 
 [features]
-default = []
+default = ["opt-in"]
+opt-in = []
 
 [dependencies]
 deluxe = { workspace = true }

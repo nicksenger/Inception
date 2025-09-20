@@ -11,8 +11,9 @@ rust-version = "1.84"
 version = "0.1.0"
 
 [features]
-default = ["opt"]
+default = ["opt", "opt-in"]
 opt = []
+opt-in = ["inception-macros/opt-in"]
 
 [dependencies]
 inception-macros.workspace = true

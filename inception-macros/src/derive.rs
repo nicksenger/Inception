@@ -10,7 +10,11 @@ enum Outcome<T> {
 
 #[derive(deluxe::ParseMetaItem, deluxe::ExtractAttributes)]
 #[deluxe(attributes(inception))]
-struct Attributes {}
+struct Attributes {
+    #[cfg(feature = "opt-in")]
+    #[deluxe(default)]
+    properties: Vec<syn::Path>,
+}
 
 pub enum State {
     Enum(EnumState),
@@ -20,17 +24,22 @@ pub enum State {
 impl State {
     pub fn gen(input: TokenStream) -> TokenStream {
         let mut input: DeriveInput = parse_macro_input!(input);
+
+        #[cfg(not(feature = "opt-in"))]
         let Attributes { .. } = match deluxe::extract_attributes(&mut input) {
             Ok(desc) => desc,
             Err(e) => return e.into_compile_error().into(),
         };
 
+        #[cfg(feature = "opt-in")]
+        let Attributes { properties, .. } = match deluxe::extract_attributes(&mut input) {
+            Ok(desc) => desc,
+            Err(e) => return e.into_compile_error().into(),
+        };
+
         let mut transform_generics = input.generics.clone();
-        transform_generics.params.push(GenericParam::Type(
-            parse_quote! { X: ::inception::Property },
-        ));
+
         let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-        let (transform_generics, _, _) = transform_generics.split_for_impl();
 
         let state = match State::try_from_data(&mut input.data, &input.ident) {
             Ok(Outcome::Process(st)) => st,
@@ -60,6 +69,16 @@ impl State {
                 let from_fields_impl = state.impl_from_fields();
                 let StructState { name, .. } = state;
 
+                #[cfg(not(feature = "opt-in"))]
+                transform_generics.params.push(GenericParam::Type(
+                    parse_quote! { X: ::inception::Property },
+                ));
+                #[cfg(feature = "opt-in")]
+                transform_generics.params.push(GenericParam::Type(
+                    parse_quote! { X: ::inception::Property + ::inception::OptIn< #name #ty_generics > },
+                ));
+                let (transform_generics, _, _) = transform_generics.split_for_impl();
+
                 let num_fields =
                     proc_macro2::Literal::usize_unsuffixed(state.field_identifiers.size());
                 let fields_meta = if is_named {
@@ -82,7 +101,17 @@ impl State {
                     quote! { ::inception::False }
                 };
 
+                #[cfg(feature = "opt-in")]
+                let opts = quote! {
+                    #(
+                        impl #impl_generics ::inception::OptIn<#name #ty_generics> for #properties where #where_clause {}
+                    )*
+                };
+                #[cfg(not(feature = "opt-in"))]
+                let opts = quote! {};
+
                 quote! {
+                    #opts
                     impl #impl_generics ::inception::DataType for #name #ty_generics #where_clause {
                         const NAME: &str = stringify!(#name);
                         type Ty = ::inception::StructTy<#is_named>;
@@ -128,6 +157,16 @@ impl State {
                     .map(|id| proc_macro2::Literal::string(id.to_string().as_str()))
                     .collect::<Vec<_>>();
 
+                #[cfg(not(feature = "opt-in"))]
+                transform_generics.params.push(GenericParam::Type(
+                    parse_quote! { X: ::inception::Property },
+                ));
+                #[cfg(feature = "opt-in")]
+                transform_generics.params.push(GenericParam::Type(
+                    parse_quote! { X: ::inception::Property + ::inception::OptIn< #name #ty_generics > },
+                ));
+                let (transform_generics, _, _) = transform_generics.split_for_impl();
+
                 let var_field_names = state
                     .field_identifiers
                     .iter()
@@ -166,7 +205,17 @@ impl State {
                     }
                 });
 
+                #[cfg(feature = "opt-in")]
+                let opts = quote! {
+                    #(
+                        impl #impl_generics ::inception::OptIn<#name #ty_generics> for #properties where #where_clause {}
+                    )*
+                };
+                #[cfg(not(feature = "opt-in"))]
+                let opts = quote! {};
+
                 quote! {
+                    #opts
                     impl #impl_generics ::inception::DataType for #name #ty_generics #where_clause {
                         const NAME: &str = stringify!(#name);
                         type Ty = ::inception::EnumTy;

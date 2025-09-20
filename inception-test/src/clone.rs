@@ -1,6 +1,6 @@
 use inception::*;
 
-#[inception(property = Ref)]
+#[inception(property = DupeRef)]
 pub trait Duplicate {
     fn dupe(&self) -> Self;
 
@@ -25,43 +25,43 @@ pub trait Duplicate {
             Err(_) => List((VarOwnedField::empty(), r.dupe())),
         }
     }
-    fn join<F: Duplicate<Ret = <T as Inception<Ref>>::OwnedFields>>(fields: F) -> Self {
-        <Self as Inception<Ref>>::from_fields(fields.dupe())
+    fn join<F: Duplicate<Ret = <T as Inception<DupeRef>>::OwnedFields>>(fields: F) -> Self {
+        <Self as Inception<DupeRef>>::from_fields(fields.dupe())
     }
 }
 
-#[primitive(property = Ref)]
+#[primitive(property = DupeRef)]
 impl Duplicate for u8 {
     fn dupe(&self) -> Self {
         *self
     }
 }
-#[primitive(property = Ref)]
+#[primitive(property = DupeRef)]
 impl Duplicate for u64 {
     fn dupe(&self) -> Self {
         *self
     }
 }
-#[primitive(property = Ref)]
+#[primitive(property = DupeRef)]
 impl Duplicate for u128 {
     fn dupe(&self) -> Self {
         *self
     }
 }
-#[primitive(property = Ref)]
+#[primitive(property = DupeRef)]
 impl Duplicate for String {
     fn dupe(&self) -> Self {
         self.clone()
     }
 }
-#[primitive(property = Ref)]
+#[primitive(property = DupeRef)]
 impl Duplicate for VariantHeader {
     fn dupe(&self) -> Self {
         VariantHeader
     }
 }
 
-#[inception(property = Mut)]
+#[inception(property = DupeMut)]
 trait MutDupe {
     fn dupe_mut(&mut self) -> Self;
 
@@ -86,43 +86,43 @@ trait MutDupe {
             Err(_) => List((VarOwnedField::empty(), r.dupe_mut())),
         }
     }
-    fn join<F: MutDupe<Ret = <T as Inception<Mut>>::OwnedFields>>(fields: F) -> Self {
-        <T as Inception<Mut>>::from_fields(fields.dupe_mut())
+    fn join<F: MutDupe<Ret = <T as Inception<DupeMut>>::OwnedFields>>(fields: F) -> Self {
+        <T as Inception<DupeMut>>::from_fields(fields.dupe_mut())
     }
 }
 
-#[primitive(property = Mut)]
+#[primitive(property = DupeMut)]
 impl MutDupe for u8 {
     fn dupe_mut(&mut self) -> Self {
         *self
     }
 }
-#[primitive(property = Mut)]
+#[primitive(property = DupeMut)]
 impl MutDupe for u64 {
     fn dupe_mut(&mut self) -> Self {
         *self
     }
 }
-#[primitive(property = Mut)]
+#[primitive(property = DupeMut)]
 impl MutDupe for u128 {
     fn dupe_mut(&mut self) -> Self {
         *self
     }
 }
-#[primitive(property = Mut)]
+#[primitive(property = DupeMut)]
 impl MutDupe for String {
     fn dupe_mut(&mut self) -> Self {
         self.clone()
     }
 }
-#[primitive(property = Mut)]
+#[primitive(property = DupeMut)]
 impl MutDupe for VariantHeader {
     fn dupe_mut(&mut self) -> Self {
         VariantHeader
     }
 }
 
-#[inception(property = Owned)]
+#[inception(property = DupeOwned)]
 trait OwnDupe {
     fn dupe_owned(self) -> Self;
 
@@ -148,36 +148,36 @@ trait OwnDupe {
             Err(_) => List((VarOwnedField::empty(), r.dupe_owned())),
         }
     }
-    fn join<F: OwnDupe<Ret = <T as Inception<Owned>>::OwnedFields>>(fields: F) -> Self {
-        <T as Inception<Owned>>::from_fields(fields.dupe_owned())
+    fn join<F: OwnDupe<Ret = <T as Inception<DupeOwned>>::OwnedFields>>(fields: F) -> Self {
+        <T as Inception<DupeOwned>>::from_fields(fields.dupe_owned())
     }
 }
 
-#[primitive(property = Owned)]
+#[primitive(property = DupeOwned)]
 impl OwnDupe for u8 {
     fn dupe_owned(self) -> Self {
         self
     }
 }
-#[primitive(property = Owned)]
+#[primitive(property = DupeOwned)]
 impl OwnDupe for u64 {
     fn dupe_owned(self) -> Self {
         self
     }
 }
-#[primitive(property = Owned)]
+#[primitive(property = DupeOwned)]
 impl OwnDupe for u128 {
     fn dupe_owned(self) -> Self {
         self
     }
 }
-#[primitive(property = Owned)]
+#[primitive(property = DupeOwned)]
 impl OwnDupe for String {
     fn dupe_owned(self) -> Self {
         self.clone()
     }
 }
-#[primitive(property = Owned)]
+#[primitive(property = DupeOwned)]
 impl OwnDupe for VariantHeader {
     fn dupe_owned(self) -> Self {
         VariantHeader
