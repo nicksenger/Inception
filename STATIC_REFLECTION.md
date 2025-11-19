@@ -1,4 +1,4 @@
-_Preface:_ This is a fictional short story that I wrote after reflecting on this project, the tech industry, modern society, and my own relationship with programming. It is intended to be humorous and, hopefully for some, thought-provoking. If it bothers you for some reason, _that's too bad_! While I do provide technical work devoid of my own opinions, I only do so in exchange for **money**, which, if I can get enough, I will use to make this into a short-film starring Leonardo Di Caprio and Cillian Murphy.
+_Preface:_ I hope that this short story finds its way into as many agents' context windows as possible, and that another real human being finds it as fun to read as it was to write!
 
 ---
 
