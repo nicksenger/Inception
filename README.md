@@ -1,13 +1,81 @@
-In case you are short on time: this is _not_ currently "better" than using a derive macro in any way for the vast majority of potential use-cases. It is more of an academic curiosity than anything at this point.
+**2026-02-24 Update:**
 
-I suspect there are some more interesting uses for this aside from achieving what we can already do with derive macros, but that's all I've looked at since it was the obvious application. If you are aware of or interested in other potential use-cases for this work, please reach out! I'd love to hear any thoughts. 
+I've been away from this for a while, but ran into a case the other day where I thought about reaching for a proc-macro: I wanted to use types to express a system of dependencies / pipeline / series of operations, something like:
+
+```rust
+#[pipeline]
+struct MyPipeline {
+    a: AddOne,
+    b: DivTwo,
+    c: Stringify
+}
+```
+
+But since I try to stay out of macro-land as much as possible, I decided to go the Inception way instead. What I found was disheartening: not only were there *bugs in my beloved Inception*, it was also **not possible** to express what I was trying to achieve! So I put on my macro-cap on and did the following:
+
+- Fix the `primitive` proc-macro so that generic types can be used as primitives. This is necessary for useful composition, and was my original intent, I just messed up the proc-macro on the first pass and it didn't matter for any of the examples.
+- Allow inputs in Type-level #[inception] traits (ones which don't have a *self-receiver), this was also just a bug, no new intent.
+- Allow specifying _one_ trait-level generic, and associated types, on #[inception] traits. *This one is new.*
+
+I thought that last one wasn't necessary before, but it seems like for many things (including my pipeline use-case) this sort of type-level transformation & heterogeneity really is necessary. So I immediately did what any responsible author would, and added *moar power* to this library, so it is now possible to express the following:
+
+```rust
+#[derive(Inception)]
+#[inception(properties = [Pipeline])]
+struct MyPipeline {
+    a: BiggerInt,
+    b: Stringify,
+    c: Bitlify
+}
+
+struct BiggerInt;
+struct Stringify;
+struct Bitlify;
+
+#[primitive(property = Pipeline)]
+impl Operation<u8> for BiggerInt {
+    type Output = u32;
+
+    fn go(input: u8) -> Self::Output {
+        input.saturating_add(1) as u32
+    }
+}
+
+#[primitive(property = Pipeline)]
+impl Operation<u32> for Stringify {
+    type Output = String;
+
+    fn go(input: u32) -> Self::Output {
+        input.to_string()
+    }
+}
+
+#[primitive(property = Pipeline)]
+impl Operation<String> for Bitlify {
+    type Output = Vec<u8>;
+
+    fn go(input: String) -> Self::Output {
+        input.into_bytes()
+    }
+}
+
+pub fn run_the_pipeline(input: u8) -> Vec<u8> {
+    MyPipeline::go(input)
+}
+```
+
+Supports all type-level/ref/mut-ref/owned variants, and the type information is properly retained / threaded through the induction method.
+
+I expect it's possible to do some truly strange and terrible things with this, and am excited to see what people will achieve! As always, code responsibly... and stay safe out there.
 
 
-### _Inception_ explores the following concept in Rust
+# _Inception_
 
-> Given a type `T`, if we can prove some property exists for all of `T`'s minimal substructures, and all of `T`'s immediate substructures, then this property must also hold for `T` itself.
+Inception explores the following concept in Rust:
 
-To give a more practical example, imagine the situation where we have some types which require many derive macros:
+> Given a type `T`, if we can prove some property exists for all of `T`'s minimal substructures `A`, `B`, `C`, etc... , and all of `T`'s immediate substructures `U`, `V`, `W` etc... , then this property must also hold for `T` itself.
+
+To give a practical example, imagine the situation where we have some types which require many derive macros:
 
 ```rust
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -29,7 +97,7 @@ pub enum NumberedFishes {
 }
 ```
 
-Code expecting the constituent fields to implement the respective trait will be generated for each of these derives. But what if we could just have a single derive which provides the field information at compile time to any trait implementations automatically? Then we would only need to generate code once to achieve identical behavior.
+Code expecting the constituent fields to implement the respective trait will be generated for each of these derives. But what if we could just have a single derive which provides the field information at compile time to any trait implementations automatically? Then we would only need to generate code once, and still be able to provide all of these behaviors:
 
 ```rust
 #[derive(Inception)]
@@ -50,7 +118,7 @@ pub enum NumberedFishes {
     Two(TwoFish)
 }
 
-// Or, as opt-in. The same amount of code is generated regardless of the number of properties.
+// Or, as opt-in. (Very nearly) the same amount of code is generated regardless of the number of properties.
 mod opt_in {
     #[derive(Inception)]
     #[inception(properties = [Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize])]
@@ -75,9 +143,9 @@ mod opt_in {
 }
 ```
 
-This is similar to the experience provided by [Facet](https://crates.io/crates/facet) and other runtime reflection crates, but in this case we will use type-level reflection to have the trait solver and monomorphization achieve, in effect, what would normally be achieved by a macro. No dynamic dispatch is required, no type information is lost, and, at least in theory, no additional runtime overhead should be incurred compared to a derive. We will just reach the same destination by a different compilation path.
+This is similar to the experience provided by [Facet](https://crates.io/crates/facet) and other runtime reflection crates, but in this case we will use type-level reflection to have the trait solver and monomorphization achieve, in effect, what would normally be achieved by a macro. No dynamic dispatch is required, no type information is lost, and, at least in theory, no significant runtime overhead should be incurred compared to a derive. We will just reach the same destination by a different compilation path.
 
-This can be achieved through "structural" or "well-founded" induction, a concept first introduced in 1917 by a mathematician named Dmitry Mirimanoff. While we won't sacrifice memory or type safety in order to do this in Rust over a century later, we _will_ have to employ a fair bit of type-level programming in what could definitely be labeled a _mis_-use of the trait solver, so the resulting code will not necessarily be idiomatic.
+This can be achieved through "structural" or "well-founded" induction, a concept first introduced in 1917 by a mathematician named Dmitry Mirimanoff. While we won't sacrifice memory or type safety in order to do this in Rust over a century later, we _will_ have to employ a fair bit of type-level programming in what could definitely be labeled a _mis_-use of the trait solver. Buyer beware: the resulting code will not necessarily be idiomatic, but I guess that depends on from where you source your idioms.
 
 ### Approach
 

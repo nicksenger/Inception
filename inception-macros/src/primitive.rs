@@ -32,13 +32,13 @@ impl State {
                         .into_compile_error()
                         .into();
                 };
-                let (impl_generics, ty_generics, where_clause) = x.generics.split_for_impl();
+                let (impl_generics, _ty_generics, where_clause) = x.generics.split_for_impl();
 
                 quote! {
                     #input
                     const _: () = {
-                        impl #impl_generics ::inception::IsPrimitive<#property> for #self_ty #ty_generics #where_clause {
-                            type Is = <#property as ::inception::Compat<Self>>::Out;
+                        impl #impl_generics ::inception::IsPrimitive<#property> for #self_ty #where_clause {
+                            type Is = ::inception::True;
                         }
                     };
                 }

@@ -4,3 +4,4 @@ pub mod debug;
 pub mod default;
 pub mod eq;
 pub mod hash;
+pub mod perform;

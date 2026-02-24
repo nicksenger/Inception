@@ -12,4 +12,3 @@ criterion = "0.7"
 [[bench]]
 name = "comparison"
 harness = false
-

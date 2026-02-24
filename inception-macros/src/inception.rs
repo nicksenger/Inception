@@ -4,8 +4,8 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
     parse_macro_input, punctuated::Punctuated, token::Comma, Block, FnArg, GenericParam, Ident,
-    ItemTrait, Pat, PatIdent, PatType, ReturnType, TraitBound, TraitItem, TraitItemFn, Type,
-    TypeParam, TypeParamBound, TypePath, Visibility,
+    ItemTrait, Pat, PatIdent, PatType, ReturnType, TraitBound, TraitItem, TraitItemFn,
+    TraitItemType, Type, TypeParam, TypeParamBound, TypePath, Visibility,
 };
 
 use crate::derive::Identifier;
@@ -301,47 +301,93 @@ impl Kind {
         property: &proc_macro2::TokenStream,
         wrapper: &proc_macro2::TokenStream,
     ) -> proc_macro2::TokenStream {
-        let mutref = self.refmut();
-        let field = self.field();
-        let varfield = self.var_field();
-        let trt = self.split_trait_ident();
-        let fnn = match self {
-            Self::Ty => format_ident!("split_ty"),
-            Self::Ref => format_ident!("split_ref"),
-            Self::Mut => format_ident!("split_mut"),
-            Self::Owned => format_ident!("split"),
-        };
-        let lifepunct2 = self.lifepunct2();
-        let liferefelide = self.liferefelide();
         let vfimpl = self.split_fn(true);
         let fimpl = self.split_fn(false);
+        match self {
+            Self::Ty => quote! {
+                impl<T, S, const IDX: usize, V: Phantom> SplitTy<#property> for #wrapper<List<(TyField<T, S, IDX>, V)>> {
+                    type Left = TyField<T, S, IDX>;
+                    type Right = V;
 
-        let vbound = match self {
-            Self::Ty => quote! { : Phantom },
-            _ => quote! {},
-        };
-
-        quote! {
-            impl<#lifepunct2 T, S, const IDX: usize, V #vbound> #trt<#property> for #wrapper<#liferefelide List<(#field<#lifepunct2 T, S, IDX>, V)>>
-            {
-                type Left = #field<#lifepunct2 T, S, IDX>;
-                type Right = V;
-
-                fn #fnn(#mutref self) -> (Self::Left, #mutref Self::Right) {
-                    #fimpl
+                    fn split_ty(self) -> (Self::Left, Self::Right) {
+                        #fimpl
+                    }
                 }
-            }
-            impl<#lifepunct2 T, S, const VAR_IDX: usize, const IDX: usize, V> #trt<#property> for #wrapper<#liferefelide List<(#varfield<#lifepunct2 T, S, VAR_IDX, IDX>, V)>>
-            where
-                V: Phantom,
-            {
-                type Left = #varfield<#lifepunct2 T, S, VAR_IDX, IDX>;
-                type Right = V;
+                impl<T, S, const VAR_IDX: usize, const IDX: usize, V> SplitTy<#property> for #wrapper<List<(VarTyField<T, S, VAR_IDX, IDX>, V)>>
+                where
+                    V: Phantom,
+                {
+                    type Left = VarTyField<T, S, VAR_IDX, IDX>;
+                    type Right = V;
 
-                fn #fnn(#mutref self) -> (Self::Left, #mutref Self::Right) {
-                    #vfimpl
+                    fn split_ty(self) -> (Self::Left, Self::Right) {
+                        #vfimpl
+                    }
                 }
-            }
+            },
+            Self::Owned => quote! {
+                impl<T, S, const IDX: usize, V> Split<#property> for #wrapper<List<(OwnedField<T, S, IDX>, V)>> {
+                    type Left = OwnedField<T, S, IDX>;
+                    type Right = V;
+
+                    fn split(self) -> (Self::Left, Self::Right) {
+                        #fimpl
+                    }
+                }
+                impl<T, S, const VAR_IDX: usize, const IDX: usize, V> Split<#property> for #wrapper<List<(VarOwnedField<T, S, VAR_IDX, IDX>, V)>>
+                where
+                    V: Phantom,
+                {
+                    type Left = VarOwnedField<T, S, VAR_IDX, IDX>;
+                    type Right = V;
+
+                    fn split(self) -> (Self::Left, Self::Right) {
+                        #vfimpl
+                    }
+                }
+            },
+            Self::Ref => quote! {
+                impl<'b, 'c, T, S, const IDX: usize, V> SplitRef<#property> for #wrapper<&'b List<(RefField<'c, T, S, IDX>, V)>> {
+                    type Left = RefField<'c, T, S, IDX>;
+                    type Right = V;
+
+                    fn split_ref(&self) -> (Self::Left, &Self::Right) {
+                        #fimpl
+                    }
+                }
+                impl<'b, 'c, T, S, const VAR_IDX: usize, const IDX: usize, V> SplitRef<#property> for #wrapper<&'b List<(VarRefField<'c, T, S, VAR_IDX, IDX>, V)>>
+                where
+                    V: Phantom,
+                {
+                    type Left = VarRefField<'c, T, S, VAR_IDX, IDX>;
+                    type Right = V;
+
+                    fn split_ref(&self) -> (Self::Left, &Self::Right) {
+                        #vfimpl
+                    }
+                }
+            },
+            Self::Mut => quote! {
+                impl<'b, 'c, T, S, const IDX: usize, V> SplitMut<#property> for #wrapper<&'b mut List<(MutField<'c, T, S, IDX>, V)>> {
+                    type Left = MutField<'c, T, S, IDX>;
+                    type Right = V;
+
+                    fn split_mut(&mut self) -> (Self::Left, &mut Self::Right) {
+                        #fimpl
+                    }
+                }
+                impl<'b, 'c, T, S, const VAR_IDX: usize, const IDX: usize, V> SplitMut<#property> for #wrapper<&'b mut List<(VarMutField<'c, T, S, VAR_IDX, IDX>, V)>>
+                where
+                    V: Phantom,
+                {
+                    type Left = VarMutField<'c, T, S, VAR_IDX, IDX>;
+                    type Right = V;
+
+                    fn split_mut(&mut self) -> (Self::Left, &mut Self::Right) {
+                        #vfimpl
+                    }
+                }
+            },
         }
     }
 }
@@ -420,8 +466,25 @@ impl ParseFn for TraitItemFn {
         };
 
         match generic {
-            GenericParam::Type(TypeParam { bounds, .. }) => {
-                let bounds = bounds.iter().cloned().collect::<Vec<_>>();
+            GenericParam::Type(TypeParam { ident, bounds, .. }) => {
+                let mut bounds = bounds.iter().cloned().collect::<Vec<_>>();
+                if let Some(where_clause) = self.sig.generics.where_clause.as_ref() {
+                    for pred in where_clause.predicates.iter() {
+                        let syn::WherePredicate::Type(tp) = pred else {
+                            continue;
+                        };
+                        let Type::Path(TypePath {
+                            qself: None,
+                            path: bounded_path,
+                        }) = &tp.bounded_ty
+                        else {
+                            continue;
+                        };
+                        if bounded_path.is_ident(ident) {
+                            bounds.extend(tp.bounds.iter().cloned());
+                        }
+                    }
+                }
                 Ok(GenericBounds { bounds })
             }
             GenericParam::Lifetime(_) | GenericParam::Const(_) => {
@@ -485,12 +548,78 @@ struct GenericBounds {
     bounds: Vec<TypeParamBound>,
 }
 impl GenericBounds {
+    fn is_empty(&self) -> bool {
+        self.bounds.is_empty()
+    }
+
     fn use_inner_trait(
         mut self,
         trait_ident: &Ident,
         inductive_ident: &Ident,
         mod_ident: &Ident,
+        flow_input_ident: Option<&Ident>,
+        flow_output_ident: Option<&Ident>,
     ) -> Self {
+        fn replace_flow_type(ty: &mut Type, flow_in: Option<&Ident>, flow_out: Option<&Ident>) {
+            match ty {
+                Type::Path(TypePath { qself, path }) => {
+                    if let Some(flow) = flow_in {
+                        if path.is_ident(flow) {
+                            *ty = syn::parse_quote!(In);
+                            return;
+                        }
+                    }
+                    if let Some(flow) = flow_out {
+                        if path.is_ident(flow) {
+                            *ty = syn::parse_quote!(Out);
+                            return;
+                        }
+                    }
+                    if let Some(q) = qself {
+                        replace_flow_type(&mut q.ty, flow_in, flow_out);
+                    }
+                    for seg in path.segments.iter_mut() {
+                        match &mut seg.arguments {
+                            syn::PathArguments::AngleBracketed(args) => {
+                                for arg in args.args.iter_mut() {
+                                    match arg {
+                                        syn::GenericArgument::Type(inner) => {
+                                            replace_flow_type(inner, flow_in, flow_out);
+                                        }
+                                        syn::GenericArgument::AssocType(assoc) => {
+                                            replace_flow_type(&mut assoc.ty, flow_in, flow_out);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            syn::PathArguments::Parenthesized(args) => {
+                                for input in args.inputs.iter_mut() {
+                                    replace_flow_type(input, flow_in, flow_out);
+                                }
+                                if let ReturnType::Type(_, out) = &mut args.output {
+                                    replace_flow_type(out.as_mut(), flow_in, flow_out);
+                                }
+                            }
+                            syn::PathArguments::None => {}
+                        }
+                    }
+                }
+                Type::Reference(r) => replace_flow_type(r.elem.as_mut(), flow_in, flow_out),
+                Type::Ptr(p) => replace_flow_type(p.elem.as_mut(), flow_in, flow_out),
+                Type::Slice(s) => replace_flow_type(s.elem.as_mut(), flow_in, flow_out),
+                Type::Array(a) => replace_flow_type(a.elem.as_mut(), flow_in, flow_out),
+                Type::Tuple(t) => {
+                    for elem in t.elems.iter_mut() {
+                        replace_flow_type(elem, flow_in, flow_out);
+                    }
+                }
+                Type::Paren(p) => replace_flow_type(p.elem.as_mut(), flow_in, flow_out),
+                Type::Group(g) => replace_flow_type(g.elem.as_mut(), flow_in, flow_out),
+                _ => {}
+            }
+        }
+
         for bound in self.bounds.iter_mut() {
             if let TypeParamBound::Trait(TraitBound { path, .. }) = bound {
                 if path
@@ -502,6 +631,94 @@ impl GenericBounds {
                     let Some(p) = path.segments.first_mut() else {
                         continue;
                     };
+                    if flow_output_ident.is_some() {
+                        if let syn::PathArguments::AngleBracketed(args) = &mut p.arguments {
+                            for arg in args.args.iter_mut() {
+                                match arg {
+                                    syn::GenericArgument::Type(ty) => {
+                                        replace_flow_type(ty, flow_input_ident, flow_output_ident)
+                                    }
+                                    syn::GenericArgument::AssocType(assoc) => {
+                                        replace_flow_type(
+                                            &mut assoc.ty,
+                                            flow_input_ident,
+                                            flow_output_ident,
+                                        )
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    if flow_input_ident.is_some() {
+                        if let syn::PathArguments::AngleBracketed(args) = &mut p.arguments {
+                            for arg in args.args.iter_mut() {
+                                match arg {
+                                    syn::GenericArgument::Type(ty) => {
+                                        replace_flow_type(ty, flow_input_ident, flow_output_ident)
+                                    }
+                                    syn::GenericArgument::AssocType(assoc) => {
+                                        replace_flow_type(
+                                            &mut assoc.ty,
+                                            flow_input_ident,
+                                            flow_output_ident,
+                                        )
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    if let syn::PathArguments::AngleBracketed(args) = &mut p.arguments {
+                        let mut in_ty: Option<Type> = None;
+                        let mut out_ty: Option<Type> = None;
+                        let mut passthrough = Punctuated::<syn::GenericArgument, Comma>::new();
+
+                        for arg in args.args.iter() {
+                            match arg {
+                                syn::GenericArgument::Type(ty) => {
+                                    let replacement = if let Some(flow) = flow_input_ident {
+                                        if let Type::Path(TypePath { path, .. }) = ty {
+                                            if path.is_ident(flow) {
+                                                Some(syn::parse_quote!(In))
+                                            } else {
+                                                None
+                                            }
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    };
+                                    let ty = replacement.unwrap_or_else(|| ty.clone());
+                                    if in_ty.is_none() {
+                                        in_ty = Some(ty);
+                                    } else if out_ty.is_none() {
+                                        out_ty = Some(ty);
+                                    } else {
+                                        passthrough.push(syn::GenericArgument::Type(ty));
+                                    }
+                                }
+                                _ => passthrough.push(arg.clone()),
+                            }
+                        }
+
+                        let mut next_args = Punctuated::<syn::GenericArgument, Comma>::new();
+                        if let Some(in_ty) = in_ty {
+                            let assoc: syn::GenericArgument = syn::parse_quote!(InTy = #in_ty);
+                            next_args.push(assoc);
+                        }
+                        if let Some(out_ty) = out_ty {
+                            let assoc: syn::GenericArgument = syn::parse_quote!(OutTy = #out_ty);
+                            next_args.push(assoc);
+                        }
+                        for arg in passthrough {
+                            next_args.push(arg);
+                        }
+                        args.args = next_args;
+                    }
                     p.ident = inductive_ident.clone();
                     path.segments.insert(
                         0,
@@ -544,12 +761,17 @@ impl Step {
 struct Nothing {
     nothing_body: Block,
     nothing_ret: proc_macro2::TokenStream,
+    nothing_args: Punctuated<FnArg, Comma>,
+    nothing_arg_idents: Punctuated<Ident, Comma>,
 }
 impl Nothing {
     fn parse(f: &TraitItemFn) -> Result<Self, &str> {
+        let skip = usize::from(f.sig.receiver().is_some());
         Ok(Self {
             nothing_body: f.body()?,
             nothing_ret: f.ret(),
+            nothing_args: f.args(skip)?,
+            nothing_arg_idents: f.arg_idents(skip)?,
         })
     }
 }
@@ -559,6 +781,7 @@ struct MergeField {
     merge_ret: proc_macro2::TokenStream,
     merge_head_ident: Ident,
     merge_fields_ident: Ident,
+    merge_extra_generics: Vec<Ident>,
     merge_head_arg: Ident,
     #[allow(unused)]
     merge_head_arg_ty: Ident,
@@ -572,11 +795,21 @@ struct MergeField {
 }
 impl MergeField {
     fn parse(f: &TraitItemFn) -> Result<Self, &str> {
+        let mut merge_extra_generics = Vec::new();
+        for param in f.sig.generics.params.iter().skip(2) {
+            match param {
+                GenericParam::Type(t) => merge_extra_generics.push(t.ident.clone()),
+                GenericParam::Lifetime(_) | GenericParam::Const(_) => {
+                    return Err("Sorry, lifetime and const generics aren't supported yet.");
+                }
+            }
+        }
         Ok(Self {
             merge_body: f.body()?,
             merge_ret: f.ret(),
             merge_head_ident: f.generic_ident(0)?,
             merge_fields_ident: f.generic_ident(1)?,
+            merge_extra_generics,
             merge_head_arg: f.arg_ident(0)?,
             merge_head_arg_ty: f.arg_ty(0)?,
             merge_fields_arg: f.arg_ident(1)?,
@@ -637,6 +870,7 @@ struct MergeVar {
     merge_var_ret: proc_macro2::TokenStream,
     merge_var_head_ident: Ident,
     merge_var_fields_ident: Ident,
+    merge_var_extra_generics: Vec<Ident>,
     merge_var_head_arg: Ident,
     #[allow(unused)]
     merge_var_head_arg_ty: Ident,
@@ -650,11 +884,21 @@ struct MergeVar {
 }
 impl MergeVar {
     fn parse(f: &TraitItemFn) -> Result<Self, &str> {
+        let mut merge_var_extra_generics = Vec::new();
+        for param in f.sig.generics.params.iter().skip(2) {
+            match param {
+                GenericParam::Type(t) => merge_var_extra_generics.push(t.ident.clone()),
+                GenericParam::Lifetime(_) | GenericParam::Const(_) => {
+                    return Err("Sorry, lifetime and const generics aren't supported yet.");
+                }
+            }
+        }
         Ok(Self {
             merge_var_body: f.body()?,
             merge_var_ret: f.ret(),
             merge_var_head_ident: f.generic_ident(0)?,
             merge_var_fields_ident: f.generic_ident(1)?,
+            merge_var_extra_generics,
             merge_var_head_arg: f.arg_ident(0)?,
             merge_var_head_arg_ty: f.arg_ty(0)?,
             merge_var_fields_arg: f.arg_ident(1)?,
@@ -763,14 +1007,18 @@ impl Join {
 
 pub struct State {
     trait_ident: Ident,
+    trait_generics: syn::Generics,
+    trait_supertraits: Punctuated<TypeParamBound, syn::token::Plus>,
     property_ident: Ident,
     mod_ident: Ident,
     fn_ident: Ident,
     fn_args: proc_macro2::TokenStream,
+    fn_args_list: Punctuated<FnArg, Comma>,
     fn_arg_idents: Punctuated<Ident, Comma>,
     fn_ret: ReturnType,
     vis: Visibility,
     kind: Kind,
+    assoc_types: Vec<TraitItemType>,
     nothing: Option<Nothing>,
     merge_field: Option<MergeField>,
     merge_var: Option<MergeVar>,
@@ -816,14 +1064,18 @@ impl State {
     ) -> Result<TokenStream, TokenStream> {
         let mut st = State {
             trait_ident: tr.ident.clone(),
+            trait_generics: tr.generics.clone(),
+            trait_supertraits: tr.supertraits.clone(),
             property_ident,
             mod_ident: format_ident!("__inception_{}", Identifier::modularize(&tr.ident)),
             fn_ident: format_ident!("unknown"),
             fn_ret: ReturnType::Default,
             fn_args: Default::default(),
+            fn_args_list: Default::default(),
             fn_arg_idents: Default::default(),
             vis: tr.vis.clone(),
             kind: Kind::Ty,
+            assoc_types: vec![],
             nothing: None,
             merge_field: None,
             merge_var: None,
@@ -836,13 +1088,19 @@ impl State {
                 TraitItem::Fn(f) => match (f.is_reserved(), f.kind(), is_fn_defined) {
                     (false, kind, false) => {
                         is_fn_defined = true;
+                        let is_ty = matches!(&kind, Kind::Ty);
                         st.kind = kind;
                         st.fn_ident = f.sig.ident.clone();
                         st.fn_ret = f.sig.output.clone();
-                        let args = f.sig.inputs.iter().skip(1).collect::<Vec<_>>();
+                        let skip = if is_ty { 0 } else { 1 };
+                        let args = f.sig.inputs.iter().skip(skip).collect::<Vec<_>>();
                         st.fn_args = {
                             if !args.is_empty() {
-                                quote! { , #(#args),* }
+                                if is_ty {
+                                    quote! { #(#args),* }
+                                } else {
+                                    quote! { , #(#args),* }
+                                }
                             } else {
                                 quote! {}
                             }
@@ -858,6 +1116,7 @@ impl State {
                                 })
                                 .collect()
                         };
+                        st.fn_args_list = args.into_iter().cloned().collect();
                     }
                     (false, _, true) => {
                         return Err(
@@ -906,6 +1165,9 @@ impl State {
                         .into())
                 }
 
+                TraitItem::Type(t) => {
+                    st.assoc_types.push(t.clone());
+                }
                 _ => {}
             }
         }
@@ -923,23 +1185,59 @@ impl State {
         let State {
             mod_ident,
             trait_ident,
+            trait_generics,
+            trait_supertraits,
             property_ident,
             vis,
             kind,
             fn_ident,
             fn_ret,
             fn_args,
+            fn_args_list,
             fn_arg_idents,
             nothing,
             merge_field,
             merge_var,
             join,
+            assoc_types,
             ..
         } = self;
+
+        let (flow_input_ident, flow_output_ident) = {
+            let has_non_type = trait_generics
+                .params
+                .iter()
+                .any(|p| !matches!(p, GenericParam::Type(_)));
+            if has_non_type {
+                let msg = "Only type generics are currently supported for #[inception] traits.";
+                return syn::Error::new_spanned(trait_ident, msg)
+                    .into_compile_error()
+                    .into();
+            }
+            let type_params = trait_generics
+                .params
+                .iter()
+                .filter_map(|p| match p {
+                    GenericParam::Type(t) => Some(t.ident.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            if type_params.len() > 1 {
+                let msg = "Only a single type generic is currently supported for #[inception] traits.";
+                return syn::Error::new_spanned(trait_ident, msg)
+                    .into_compile_error()
+                    .into();
+            }
+            let flow_input_ident = type_params.first().cloned();
+            let flow_output_ident = None;
+            (flow_input_ident, flow_output_ident)
+        };
 
         let Some(Nothing {
             nothing_body,
             nothing_ret,
+            nothing_args,
+            nothing_arg_idents,
         }) = nothing
         else {
             let msg = format!("Expected definition for \"{NOTHING_FN_IDENT}\"");
@@ -954,6 +1252,7 @@ impl State {
             merge_field_head_bounds,
             merge_fields_ident,
             merge_fields_bounds,
+            merge_extra_generics,
             merge_head_arg,
             merge_fields_arg,
             merge_args,
@@ -973,6 +1272,7 @@ impl State {
             merge_var_fields_ident,
             merge_var_field_head_bounds,
             merge_var_fields_bounds,
+            merge_var_extra_generics,
             merge_var_head_arg,
             merge_var_fields_arg,
             merge_var_args,
@@ -991,7 +1291,7 @@ impl State {
             join_fields_ident,
             join_fields_bounds,
             join_fields_arg,
-            join_args,
+            join_args: join_extra_args,
             join_arg_idents,
             ..
         }) = join
@@ -1002,21 +1302,163 @@ impl State {
                 .into();
         };
 
+        let mut fn_args_inner_list = fn_args_list.clone();
+        let mut nothing_args = nothing_args;
+        let mut merge_args = merge_args;
+        let mut merge_var_args = merge_var_args;
+        let mut join_extra_args = join_extra_args;
+        let mut nothing_ret = nothing_ret;
+        let mut merge_ret = merge_ret;
+        let mut merge_var_ret = merge_var_ret;
+        let mut join_ret = join_ret;
+        fn replace_flow_type(ty: &mut Type, flow_in: Option<&Ident>, flow_out: Option<&Ident>) {
+            match ty {
+                Type::Path(TypePath { qself, path }) => {
+                    if let Some(flow) = flow_in {
+                        if path.is_ident(flow) {
+                            *ty = syn::parse_quote!(In);
+                            return;
+                        }
+                    }
+                    if let Some(flow) = flow_out {
+                        if path.is_ident(flow) {
+                            *ty = syn::parse_quote!(Out);
+                            return;
+                        }
+                    }
+                    if let Some(q) = qself {
+                        replace_flow_type(&mut q.ty, flow_in, flow_out);
+                    }
+                    for seg in path.segments.iter_mut() {
+                        match &mut seg.arguments {
+                            syn::PathArguments::AngleBracketed(args) => {
+                                for arg in args.args.iter_mut() {
+                                    match arg {
+                                        syn::GenericArgument::Type(inner) => {
+                                            replace_flow_type(inner, flow_in, flow_out)
+                                        }
+                                        syn::GenericArgument::AssocType(assoc) => {
+                                            replace_flow_type(&mut assoc.ty, flow_in, flow_out)
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            syn::PathArguments::Parenthesized(args) => {
+                                for input in args.inputs.iter_mut() {
+                                    replace_flow_type(input, flow_in, flow_out);
+                                }
+                                if let ReturnType::Type(_, out) = &mut args.output {
+                                    replace_flow_type(out.as_mut(), flow_in, flow_out);
+                                }
+                            }
+                            syn::PathArguments::None => {}
+                        }
+                    }
+                }
+                Type::Reference(r) => replace_flow_type(r.elem.as_mut(), flow_in, flow_out),
+                Type::Ptr(p) => replace_flow_type(p.elem.as_mut(), flow_in, flow_out),
+                Type::Slice(s) => replace_flow_type(s.elem.as_mut(), flow_in, flow_out),
+                Type::Array(a) => replace_flow_type(a.elem.as_mut(), flow_in, flow_out),
+                Type::Tuple(t) => {
+                    for elem in t.elems.iter_mut() {
+                        replace_flow_type(elem, flow_in, flow_out);
+                    }
+                }
+                Type::Paren(p) => replace_flow_type(p.elem.as_mut(), flow_in, flow_out),
+                Type::Group(g) => replace_flow_type(g.elem.as_mut(), flow_in, flow_out),
+                _ => {}
+            }
+        }
+        let replace_flow_ty =
+            |arg: &mut FnArg, flow_in: Option<&Ident>, flow_out: Option<&Ident>| {
+            let FnArg::Typed(PatType { ty, .. }) = arg else {
+                return;
+            };
+            replace_flow_type(ty.as_mut(), flow_in, flow_out);
+        };
+        if flow_input_ident.is_some() || flow_output_ident.is_some() {
+            for arg in fn_args_inner_list.iter_mut() {
+                replace_flow_ty(arg, flow_input_ident.as_ref(), flow_output_ident.as_ref());
+            }
+            for arg in nothing_args.iter_mut() {
+                replace_flow_ty(arg, flow_input_ident.as_ref(), flow_output_ident.as_ref());
+            }
+            for arg in merge_args.iter_mut() {
+                replace_flow_ty(arg, flow_input_ident.as_ref(), flow_output_ident.as_ref());
+            }
+            for arg in merge_var_args.iter_mut() {
+                replace_flow_ty(arg, flow_input_ident.as_ref(), flow_output_ident.as_ref());
+            }
+            for arg in join_extra_args.iter_mut() {
+                replace_flow_ty(arg, flow_input_ident.as_ref(), flow_output_ident.as_ref());
+            }
+            if let Ok(mut ty) = syn::parse2::<Type>(nothing_ret.clone()) {
+                replace_flow_type(&mut ty, flow_input_ident.as_ref(), flow_output_ident.as_ref());
+                nothing_ret = quote! { #ty };
+            }
+            if let Ok(mut ty) = syn::parse2::<Type>(merge_ret.clone()) {
+                replace_flow_type(&mut ty, flow_input_ident.as_ref(), flow_output_ident.as_ref());
+                merge_ret = quote! { #ty };
+            }
+            if let Ok(mut ty) = syn::parse2::<Type>(merge_var_ret.clone()) {
+                replace_flow_type(&mut ty, flow_input_ident.as_ref(), flow_output_ident.as_ref());
+                merge_var_ret = quote! { #ty };
+            }
+            if let Ok(mut ty) = syn::parse2::<Type>(join_ret.clone()) {
+                replace_flow_type(&mut ty, flow_input_ident.as_ref(), flow_output_ident.as_ref());
+                join_ret = quote! { #ty };
+            }
+        }
+
         let inductive_ident = format_ident!("Inductive");
+        let merge_fields_bounds_empty = merge_fields_bounds.is_empty();
+        let merge_var_fields_bounds_empty = merge_var_fields_bounds.is_empty();
+
         let merge_field_head_bounds = merge_field_head_bounds
-            .use_inner_trait(&trait_ident, &inductive_ident, &mod_ident)
+            .use_inner_trait(
+                &trait_ident,
+                &inductive_ident,
+                &mod_ident,
+                flow_input_ident.as_ref(),
+                flow_output_ident.as_ref(),
+            )
             .into_tokens();
         let merge_fields_bounds = merge_fields_bounds
-            .use_inner_trait(&trait_ident, &inductive_ident, &mod_ident)
+            .use_inner_trait(
+                &trait_ident,
+                &inductive_ident,
+                &mod_ident,
+                flow_input_ident.as_ref(),
+                flow_output_ident.as_ref(),
+            )
             .into_tokens();
         let merge_var_field_head_bounds = merge_var_field_head_bounds
-            .use_inner_trait(&trait_ident, &inductive_ident, &mod_ident)
+            .use_inner_trait(
+                &trait_ident,
+                &inductive_ident,
+                &mod_ident,
+                flow_input_ident.as_ref(),
+                flow_output_ident.as_ref(),
+            )
             .into_tokens();
         let merge_var_fields_bounds = merge_var_fields_bounds
-            .use_inner_trait(&trait_ident, &inductive_ident, &mod_ident)
+            .use_inner_trait(
+                &trait_ident,
+                &inductive_ident,
+                &mod_ident,
+                flow_input_ident.as_ref(),
+                flow_output_ident.as_ref(),
+            )
             .into_tokens();
         let join_fields_bounds = join_fields_bounds
-            .use_inner_trait(&trait_ident, &inductive_ident, &mod_ident)
+            .use_inner_trait(
+                &trait_ident,
+                &inductive_ident,
+                &mod_ident,
+                flow_input_ident.as_ref(),
+                flow_output_ident.as_ref(),
+            )
             .into_tokens();
 
         let dispatcher = kind.dispatcher();
@@ -1047,16 +1489,350 @@ impl State {
         let property = quote! { #property_ident };
         let inner_trait = quote! { #mod_ident :: #inductive_ident  };
         let inner_fn = format_ident!("{}", fn_ident);
+        let is_type_style = matches!(kind, Kind::Ty);
 
-        let fn_ret = match fn_ret {
+        let fn_ret_public = match fn_ret {
             ReturnType::Default => quote! { () },
             ReturnType::Type(_r, t) => quote! { #t },
+        };
+        let fn_ret_inner = if flow_input_ident.is_some() || flow_output_ident.is_some() {
+            if let Ok(mut ty) = syn::parse2::<Type>(fn_ret_public.clone()) {
+                replace_flow_type(&mut ty, flow_input_ident.as_ref(), flow_output_ident.as_ref());
+                quote! { #ty }
+            } else {
+                fn_ret_public.clone()
+            }
+        } else {
+            fn_ret_public.clone()
+        };
+        let inner_fn_args = if fn_args_inner_list.is_empty() {
+            quote! {}
+        } else if is_type_style {
+            quote! { #fn_args_inner_list }
+        } else {
+            quote! { , #fn_args_inner_list }
         };
         let fields_fn = kind.fields_fn(&property);
         let split_impl = kind.split_impl(&property, &wrapper);
         let split_trait_ident = kind.split_trait_ident();
         let split_fn_ident = kind.split_fn_ident();
         let split_fn_receiver = kind.split_fn_receiver();
+        let split_trait_args_life1 = quote! { <#property> };
+        let ret_lifetime = syn::Lifetime::new("'__inception_ret", proc_macro2::Span::call_site());
+        let split_trait_args_ret = quote! { <#property> };
+        let has_output_assoc = assoc_types.iter().any(|t| t.ident == "Output");
+        let flow_mode = flow_input_ident.is_some();
+        let flow_two_generic = flow_output_ident.is_some();
+        let flow_assoc_borrow_mode =
+            flow_mode && has_output_assoc && matches!(kind, Kind::Ref | Kind::Mut);
+        let flow_assoc_merge_ret_ident = format_ident!("__InceptionTailRet");
+        let flow_assoc_join_ret_ident = format_ident!("__InceptionJoinRet");
+        let needs_borrow_output_helpers = has_output_assoc && matches!(kind, Kind::Ref | Kind::Mut);
+        let fields_output_ident = format_ident!("FieldsOutput");
+        let tail_output_ident = format_ident!("TailOutput");
+        let borrow_output_helpers = if needs_borrow_output_helpers {
+            match kind {
+                Kind::Ref => quote! {
+                    pub trait #fields_output_ident<T, In, Out = In> {
+                        type Ret;
+                    }
+                    impl<T, In, Out, Ret> #fields_output_ident<T, In, Out> for ()
+                    where
+                        T: ::inception::Inception<super::#property_ident>,
+                        for<'a> Wrap<&'a <T as ::inception::Inception<super::#property_ident>>::#fields_ident<'a>>:
+                            Inductive<::inception::False, In, Out, Ret = Ret>,
+                    {
+                        type Ret = Ret;
+                    }
+                    pub trait #tail_output_ident<F, In, Out = In> {
+                        type Ret;
+                    }
+                    impl<F, In, Out, Ret> #tail_output_ident<F, In, Out> for ()
+                    where
+                        for<'a> Wrap<&'a F>: Inductive<::inception::False, In, Out, Ret = Ret>,
+                    {
+                        type Ret = Ret;
+                    }
+                },
+                Kind::Mut => quote! {
+                    pub trait #fields_output_ident<T, In, Out = In> {
+                        type Ret;
+                    }
+                    impl<T, In, Out, Ret> #fields_output_ident<T, In, Out> for ()
+                    where
+                        T: ::inception::Inception<super::#property_ident>,
+                        for<'a> Wrap<&'a mut <T as ::inception::Inception<super::#property_ident>>::#fields_ident<'a>>:
+                            Inductive<::inception::False, In, Out, Ret = Ret>,
+                    {
+                        type Ret = Ret;
+                    }
+                    pub trait #tail_output_ident<F, In, Out = In> {
+                        type Ret;
+                    }
+                    impl<F, In, Out, Ret> #tail_output_ident<F, In, Out> for ()
+                    where
+                        for<'a> Wrap<&'a mut F>: Inductive<::inception::False, In, Out, Ret = Ret>,
+                    {
+                        type Ret = Ret;
+                    }
+                },
+                _ => quote! {},
+            }
+        } else {
+            quote! {}
+        };
+        let needs_named_ret_lifetime =
+            has_output_assoc && matches!(kind, Kind::Ref | Kind::Mut) && !flow_assoc_borrow_mode;
+        let ret_lifepunct = if needs_named_ret_lifetime {
+            quote! { #ret_lifetime, }
+        } else {
+            quote! {}
+        };
+        let ret_liferef = if needs_named_ret_lifetime {
+            match kind {
+                Kind::Ref => quote! { & #ret_lifetime },
+                Kind::Mut => quote! { & #ret_lifetime mut },
+                _ => quote! {},
+            }
+        } else {
+            quote! {}
+        };
+        let merge_head_out_ty = if flow_input_ident.is_some() {
+            quote! {
+                <#merge_head_ident as #inner_trait<<#merge_head_ident as ::inception::IsPrimitive<#property>>::Is, In>>::Ret
+            }
+        } else {
+            quote! {
+                <#merge_head_ident as #inner_trait<<#merge_head_ident as ::inception::IsPrimitive<#property>>::Is, In>>::OutTy
+            }
+        };
+        let merge_split_right_ty = quote! {
+            #wrapper<#liferef1 <#wrapper<#liferef2 List<(#field<#lifepunct3 #merge_head_ident, S, IDX>, F)>> as #split_trait_ident #split_trait_args_life1>::Right>
+        };
+        let merge_split_right_ty_named_ret = quote! {
+            #wrapper<#ret_liferef <#wrapper<#ret_liferef List<(#field<#ret_lifepunct #merge_head_ident, S, IDX>, F)>> as #split_trait_ident #split_trait_args_ret>::Right>
+        };
+        let merge_inductive_self_ty = if needs_named_ret_lifetime {
+            quote! { #wrapper<#ret_liferef List<(#field<#ret_lifepunct #merge_head_ident, S, IDX>, F)>> }
+        } else {
+            quote! { #wrapper<#liferefelide List<(#field<#lifepunctelide #merge_head_ident, S, IDX>, F)>> }
+        };
+        let merge_var_head_out_ty = if flow_input_ident.is_some() {
+            quote! {
+                <#merge_var_head_ident as #inner_trait<<#merge_var_head_ident as ::inception::IsPrimitive<#property>>::Is, In>>::Ret
+            }
+        } else {
+            quote! {
+                <#merge_var_head_ident as #inner_trait<<#merge_var_head_ident as ::inception::IsPrimitive<#property>>::Is, In>>::OutTy
+            }
+        };
+        let merge_var_split_right_ty = quote! {
+            #wrapper<#liferef1 <#wrapper<#liferef2 List<(#var_field<#lifepunct3 #merge_var_head_ident, S, VAR_IDX, IDX>, F)>> as #split_trait_ident #split_trait_args_life1>::Right>
+        };
+        let merge_var_split_right_ty_named_ret = quote! {
+            #wrapper<#ret_liferef <#wrapper<#ret_liferef List<(#var_field<#ret_lifepunct #merge_var_head_ident, S, VAR_IDX, IDX>, F)>> as #split_trait_ident #split_trait_args_ret>::Right>
+        };
+        let merge_var_inductive_self_ty = if needs_named_ret_lifetime {
+            quote! { #wrapper<#ret_liferef List<(#var_field<#ret_lifepunct #merge_var_head_ident, S, VAR_IDX, IDX>, F)>> }
+        } else {
+            quote! { #wrapper<#liferefelide List<(#var_field<#lifepunctelide #merge_var_head_ident, S, VAR_IDX, IDX>, F)>> }
+        };
+        let join_wrapper_fields_ty = quote! {
+            #wrapper<#liferef1 <T as Inception<#property>>::#fields_ident #bracketlife2>
+        };
+        let join_wrapper_fields_ty_named_ret = quote! {
+            #wrapper<#ret_liferef <T as Inception<#property>>::#fields_ident <#ret_lifetime>>
+        };
+        fn replace_type_ident(ty: &mut Type, target: &Ident, replacement: &Type) {
+            match ty {
+                Type::Path(TypePath { qself, path }) => {
+                    if path.is_ident(target) {
+                        *ty = replacement.clone();
+                        return;
+                    }
+                    if let Some(q) = qself {
+                        replace_type_ident(&mut q.ty, target, replacement);
+                    }
+                    for seg in path.segments.iter_mut() {
+                        match &mut seg.arguments {
+                            syn::PathArguments::AngleBracketed(args) => {
+                                for arg in args.args.iter_mut() {
+                                    match arg {
+                                        syn::GenericArgument::Type(inner) => {
+                                            replace_type_ident(inner, target, replacement)
+                                        }
+                                        syn::GenericArgument::AssocType(assoc) => {
+                                            replace_type_ident(&mut assoc.ty, target, replacement)
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            syn::PathArguments::Parenthesized(args) => {
+                                for input in args.inputs.iter_mut() {
+                                    replace_type_ident(input, target, replacement);
+                                }
+                                if let ReturnType::Type(_, out) = &mut args.output {
+                                    replace_type_ident(out.as_mut(), target, replacement);
+                                }
+                            }
+                            syn::PathArguments::None => {}
+                        }
+                    }
+                }
+                Type::Reference(r) => replace_type_ident(r.elem.as_mut(), target, replacement),
+                Type::Ptr(p) => replace_type_ident(p.elem.as_mut(), target, replacement),
+                Type::Slice(s) => replace_type_ident(s.elem.as_mut(), target, replacement),
+                Type::Array(a) => replace_type_ident(a.elem.as_mut(), target, replacement),
+                Type::Tuple(t) => {
+                    for elem in t.elems.iter_mut() {
+                        replace_type_ident(elem, target, replacement);
+                    }
+                }
+                Type::Paren(p) => replace_type_ident(p.elem.as_mut(), target, replacement),
+                Type::Group(g) => replace_type_ident(g.elem.as_mut(), target, replacement),
+                _ => {}
+            }
+        }
+        let substitute_ret_ident = |ret: &proc_macro2::TokenStream,
+                                    target: &Ident,
+                                    replacement: &proc_macro2::TokenStream| {
+            let Ok(mut ty) = syn::parse2::<Type>(ret.clone()) else {
+                return ret.clone();
+            };
+            let Ok(repl_ty) = syn::parse2::<Type>(replacement.clone()) else {
+                return ret.clone();
+            };
+            replace_type_ident(&mut ty, target, &repl_ty);
+            quote! { #ty }
+        };
+        let merge_ret_inductive = if flow_assoc_borrow_mode {
+            quote! { #flow_assoc_merge_ret_ident }
+        } else {
+            substitute_ret_ident(
+                &merge_ret,
+                &merge_fields_ident,
+                if needs_named_ret_lifetime {
+                    &merge_split_right_ty_named_ret
+                } else {
+                    &merge_split_right_ty
+                },
+            )
+        };
+        let merge_var_ret_inductive = substitute_ret_ident(
+            &merge_var_ret,
+            &merge_var_fields_ident,
+            if needs_named_ret_lifetime {
+                &merge_var_split_right_ty_named_ret
+            } else {
+                &merge_var_split_right_ty
+            },
+        );
+        let join_ret_inductive = if needs_borrow_output_helpers {
+            if flow_assoc_borrow_mode {
+                quote! { #flow_assoc_join_ret_ident }
+            } else if flow_mode {
+                quote! { <() as #mod_ident::#fields_output_ident<Self, In, Out>>::Ret }
+            } else {
+                quote! { <() as #mod_ident::#fields_output_ident<Self, In>>::Ret }
+            }
+        } else if needs_named_ret_lifetime {
+            substitute_ret_ident(&join_ret, &join_fields_ident, &join_wrapper_fields_ty_named_ret)
+        } else {
+            substitute_ret_ident(&join_ret, &join_fields_ident, &join_wrapper_fields_ty)
+        };
+        let trait_where_clause = &trait_generics.where_clause;
+        let trait_generic_params = {
+            let params = &trait_generics.params;
+            if params.is_empty() {
+                quote! {}
+            } else {
+                quote! { <#params> }
+            }
+        };
+        let compat_impl = if flow_input_ident.is_some() {
+            quote! {}
+        } else {
+            quote! {
+                impl<T> ::inception::Compat<T> for super::#property_ident
+                where
+                    T: super::#trait_ident,
+                {
+                    type Out = True;
+                }
+            }
+        };
+        let trait_bound_with_in =
+            match (flow_input_ident.as_ref(), flow_output_ident.as_ref()) {
+                (Some(_), Some(_)) => quote! { super::#trait_ident<In, Out> },
+                (Some(_), None) => quote! { super::#trait_ident<In> },
+                (None, _) => quote! { super::#trait_ident },
+            };
+        let primitive_impl_generics = match (flow_input_ident.as_ref(), flow_output_ident.as_ref()) {
+            (Some(_), Some(_)) => quote! { <T, In, Out> },
+            (Some(_), None) => quote! { <T, In> },
+            (None, _) => quote! { <T, In> },
+        };
+        let primitive_impl_trait_args =
+            match (flow_input_ident.as_ref(), flow_output_ident.as_ref()) {
+                (Some(_), Some(_)) => quote! { <True, In, Out> },
+                (Some(_), None) => quote! { <True, In> },
+                (None, _) => quote! { <True, In> },
+            };
+        let blanket_impl_head = match (flow_input_ident.as_ref(), flow_output_ident.as_ref()) {
+            (Some(flow_in), Some(flow_out)) => {
+                quote! { impl<T, #flow_in, #flow_out> #trait_ident<#flow_in, #flow_out> for T }
+            }
+            (Some(flow), None) => quote! { impl<T, #flow> #trait_ident<#flow> for T },
+            (None, _) => quote! { impl<T> #trait_ident for T },
+        };
+        let blanket_inner_bound = match (flow_input_ident.as_ref(), flow_output_ident.as_ref()) {
+            (Some(flow_in), Some(flow_out)) => {
+                quote! { #inner_trait<::inception::False, #flow_in, #flow_out, Ret = #flow_out> }
+            }
+            (Some(flow), None) => quote! { #inner_trait<::inception::False, #flow> },
+            (None, _) => quote! { #inner_trait<::inception::False, Ret = #fn_ret_public> },
+        };
+        let primitive_ret = if has_output_assoc {
+            quote! { <T as #trait_bound_with_in>::Output }
+        } else {
+            quote! { #fn_ret_inner }
+        };
+        let primitive_out_ty = if flow_two_generic {
+            quote! { Out }
+        } else {
+            quote! { In }
+        };
+        let assoc_trait_items = assoc_types.iter().map(|t| quote! { #t }).collect::<Vec<_>>();
+        let assoc_impl_items = assoc_types
+            .iter()
+            .filter_map(|t| {
+                let ident = &t.ident;
+                if ident == "Output" {
+                    if let Some(flow) = flow_input_ident.as_ref() {
+                        Some(quote! {
+                            type #ident = <T as #inner_trait<::inception::False, #flow>>::Ret;
+                        })
+                    } else {
+                        Some(quote! {
+                            type #ident = <T as #inner_trait<::inception::False>>::Ret;
+                        })
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        let trait_supertrait_clause = if trait_supertraits.is_empty() {
+            quote! {}
+        } else {
+            quote! { : #trait_supertraits }
+        };
+        let trait_supertrait_bounds = if trait_supertraits.is_empty() {
+            quote! {}
+        } else {
+            quote! { + #trait_supertraits }
+        };
 
         let placeholder = format_ident!("_");
         let (merge_arg_head, merge_arg_tail) = (
@@ -1100,32 +1876,416 @@ impl State {
         } else {
             quote! {}
         };
+        let merge_extra_tuple_ty = if merge_extra_generics.is_empty() {
+            quote! { () }
+        } else {
+            quote! { (#(#merge_extra_generics),*,) }
+        };
+        let merge_var_extra_tuple_ty = if merge_var_extra_generics.is_empty() {
+            quote! { () }
+        } else {
+            quote! { (#(#merge_var_extra_generics),*,) }
+        };
+        let merge_field_impl_generics = if flow_mode {
+            quote! { <#lifepunct1 #merge_head_ident, S, const IDX: usize, F, L, #merge_fields_ident, #(#merge_extra_generics,)* In, Out> }
+        } else {
+            quote! { <#lifepunct1 #merge_head_ident, S, const IDX: usize, F, L, #merge_fields_ident, In> }
+        };
+        let merge_field_impl_trait_args = if flow_mode {
+            quote! { <L, #merge_fields_ident, In, Out, #merge_extra_tuple_ty> }
+        } else {
+            quote! { <L, #merge_fields_ident, In, In, #merge_extra_tuple_ty> }
+        };
+        let merge_field_head_bound = if flow_two_generic {
+            quote! { ::core::marker::Sized #merge_field_head_bounds + ::inception::IsPrimitive<#property> }
+        } else if flow_mode {
+            if flow_assoc_borrow_mode {
+                quote! { #inner_trait<<#merge_head_ident as ::inception::IsPrimitive<#property>>::Is, In> + ::inception::IsPrimitive<#property> }
+            } else {
+                quote! { #inner_trait<<#merge_head_ident as ::inception::IsPrimitive<#property>>::Is, In> #merge_field_head_bounds + ::inception::IsPrimitive<#property> }
+            }
+        } else {
+            quote! { #inner_trait #merge_field_head_bounds + ::inception::IsPrimitive<#property> }
+        };
+        let merge_field_tail_bound = if flow_two_generic {
+            quote! { Fields #merge_fields_bounds + ::inception::IsPrimitive<#property> }
+        } else if flow_mode {
+            if flow_assoc_borrow_mode {
+                quote! { Fields + #inner_trait<::inception::False, #merge_head_out_ty, Out> + ::inception::IsPrimitive<#property> }
+            } else {
+                quote! { Fields + #inner_trait<::inception::False, #merge_head_out_ty, Out> #merge_fields_bounds + ::inception::IsPrimitive<#property> }
+            }
+        } else {
+            quote! { Fields + #inner_trait #merge_fields_bounds + ::inception::IsPrimitive<#property> }
+        };
+        let merge_field_impl_out_ty = if flow_mode {
+            quote! { Out }
+        } else {
+            quote! { In }
+        };
+        let merge_variant_impl_generics = if flow_mode {
+            quote! { <#lifepunct1 #merge_var_head_ident, S, const VAR_IDX: usize, const IDX: usize, F, L, #merge_var_fields_ident, #(#merge_var_extra_generics,)* In, Out> }
+        } else {
+            quote! { <#lifepunct1 #merge_var_head_ident, S, const VAR_IDX: usize, const IDX: usize, F, L, #merge_var_fields_ident, In> }
+        };
+        let merge_variant_impl_trait_args = if flow_mode {
+            quote! { <L, #merge_var_fields_ident, In, Out, #merge_var_extra_tuple_ty> }
+        } else {
+            quote! { <L, #merge_var_fields_ident, In, In, #merge_var_extra_tuple_ty> }
+        };
+        let merge_variant_head_bound = if flow_two_generic {
+            quote! { ::core::marker::Sized #merge_var_field_head_bounds + ::inception::IsPrimitive<#property> }
+        } else if flow_mode {
+            quote! { #inner_trait<<#merge_var_head_ident as ::inception::IsPrimitive<#property>>::Is, In> #merge_var_field_head_bounds + ::inception::IsPrimitive<#property> }
+        } else {
+            quote! { #inner_trait #merge_var_field_head_bounds + ::inception::IsPrimitive<#property> }
+        };
+        let merge_variant_tail_bound = if flow_two_generic {
+            quote! { Fields #merge_var_fields_bounds + ::inception::IsPrimitive<#property> }
+        } else if flow_mode {
+            quote! { Fields + #inner_trait<::inception::False, #merge_var_head_out_ty, Out> #merge_var_fields_bounds + ::inception::IsPrimitive<#property> }
+        } else {
+            quote! { Fields + #inner_trait #merge_var_fields_bounds + ::inception::IsPrimitive<#property> }
+        };
+        let merge_variant_impl_out_ty = if flow_mode {
+            quote! { Out }
+        } else {
+            quote! { In }
+        };
+        let join_impl_generics = if flow_mode {
+            quote! { <T, #join_fields_ident, In, Out> }
+        } else {
+            quote! { <T, #join_fields_ident, In> }
+        };
+        let join_impl_trait_args = if flow_mode {
+            quote! { <#join_fields_ident, In, Out> }
+        } else {
+            quote! { <#join_fields_ident, In, In> }
+        };
+        let join_fields_bound = if flow_mode {
+            if flow_assoc_borrow_mode {
+                quote! { #inner_trait<::inception::False, In, Out> + ::inception::IsPrimitive<#property> }
+            } else {
+                quote! { #inner_trait<::inception::False, In, Out> #join_fields_bounds + ::inception::IsPrimitive<#property> }
+            }
+        } else {
+            quote! { #inner_trait #join_fields_bounds + ::inception::IsPrimitive<#property> }
+        };
+        let join_impl_out_ty = if flow_mode {
+            quote! { Out }
+        } else {
+            quote! { In }
+        };
+        let join_impl_ret_ty = if flow_assoc_borrow_mode {
+            quote! { <#join_fields_ident as #inner_trait<::inception::False, In, Out>>::Ret }
+        } else {
+            quote! { #join_ret }
+        };
+        let merge_call_trait_args = if flow_mode {
+            quote! { <_, _, In, Out, _> }
+        } else {
+            quote! { <_, _, In, In, _> }
+        };
+        let merge_variant_call_trait_args = if flow_mode {
+            quote! { <_, _, In, Out, _> }
+        } else {
+            quote! { <_, _, In, In, _> }
+        };
+        let join_call_trait_args = if flow_mode {
+            quote! { <_, In, Out> }
+        } else {
+            quote! { <_, In> }
+        };
+        let ret_lifetime_decl = if needs_named_ret_lifetime {
+            quote! { #ret_lifetime, }
+        } else {
+            quote! {}
+        };
+        let split_for_2 = quote! { for<#lifepunct1 #life2> };
+        let split_for_3 = quote! { for<#lifepunct1 #lifepunct2 #life3> };
+        let merge_split_trait_generic = quote! {
+            #split_trait_ident<#property, Left = #field<#lifepunct2 #merge_head_ident, S, IDX>, Right = F>
+        };
+        let merge_split_bound = if needs_named_ret_lifetime {
+            quote! {
+                #split_for_2 #wrapper<#liferef1 List<(#field<#lifepunct2 #merge_head_ident, S, IDX>, F)>>:
+                    #merge_split_trait_generic,
+            }
+        } else {
+            quote! {
+                #split_for_2 #wrapper<#liferef1 List<(#field<#lifepunct2 #merge_head_ident, S, IDX>, F)>>:
+                    #merge_split_trait_generic,
+            }
+        };
+        let merge_tail_extra_bounds = if flow_assoc_borrow_mode {
+            quote! {}
+        } else if merge_extra_generics.is_empty() {
+            quote! { #merge_fields_bounds }
+        } else {
+            quote! {}
+        };
+        let merge_tail_two_generic_rhs = if merge_extra_generics.is_empty() {
+            if merge_fields_bounds_empty {
+                quote! { Fields }
+            } else {
+                quote! { #merge_fields_bounds + Fields }
+            }
+        } else {
+            quote! { Fields }
+        };
+        let merge_tail_bound = if flow_two_generic {
+            quote! {
+                #split_for_3 #merge_split_right_ty:
+                    #merge_tail_two_generic_rhs,
+            }
+        } else if flow_assoc_borrow_mode {
+            match kind {
+                Kind::Ref => quote! {
+                    for<'a> #wrapper<&'a F>:
+                        #inner_trait<::inception::False, #merge_head_out_ty, Out, Ret = #flow_assoc_merge_ret_ident> + Fields,
+                },
+                Kind::Mut => quote! {
+                    for<'a> #wrapper<&'a mut F>:
+                        #inner_trait<::inception::False, #merge_head_out_ty, Out, Ret = #flow_assoc_merge_ret_ident> + Fields,
+                },
+                _ => quote! {
+                    #split_for_3 #merge_split_right_ty:
+                        #inner_trait<::inception::False, #merge_head_out_ty, Out> #merge_tail_extra_bounds + Fields,
+                },
+            }
+        } else {
+            quote! {
+                #split_for_3 #merge_split_right_ty:
+                    #inner_trait<::inception::False, #merge_head_out_ty, Out> #merge_tail_extra_bounds + Fields,
+            }
+        };
+        let merge_named_output_eq_bound = if flow_assoc_borrow_mode {
+            quote! {}
+        } else if needs_named_ret_lifetime && has_output_assoc {
+            quote! {
+                #split_for_3 #merge_split_right_ty:
+                    #inner_trait<::inception::False, #merge_head_out_ty, Ret = #merge_ret_inductive>,
+            }
+        } else {
+            quote! {}
+        };
+        let merge_var_split_bound = if needs_named_ret_lifetime {
+            let merge_var_split_trait_generic = quote! {
+                #split_trait_ident<#property, Left = #var_field<#lifepunct2 #merge_var_head_ident, S, VAR_IDX, IDX>, Right = F>
+            };
+            quote! {
+                #split_for_2 #wrapper<#liferef1 List<(#var_field<#lifepunct2 #merge_var_head_ident, S, VAR_IDX, IDX>, F)>>:
+                    #merge_var_split_trait_generic,
+            }
+        } else {
+            let merge_var_split_trait_generic = quote! {
+                #split_trait_ident<#property, Left = #var_field<#lifepunct2 #merge_var_head_ident, S, VAR_IDX, IDX>, Right = F>
+            };
+            quote! {
+                #split_for_2 #wrapper<#liferef1 List<(#var_field<#lifepunct2 #merge_var_head_ident, S, VAR_IDX, IDX>, F)>>:
+                    #merge_var_split_trait_generic,
+            }
+        };
+        let merge_var_tail_extra_bounds = if merge_var_extra_generics.is_empty() {
+            quote! { #merge_var_fields_bounds }
+        } else {
+            quote! {}
+        };
+        let merge_var_tail_two_generic_rhs = if merge_var_extra_generics.is_empty() {
+            if merge_var_fields_bounds_empty {
+                quote! { Fields }
+            } else {
+                quote! { #merge_var_fields_bounds + Fields }
+            }
+        } else {
+            quote! { Fields }
+        };
+        let merge_var_tail_bound = if flow_two_generic {
+            quote! {
+                #split_for_3 #merge_var_split_right_ty:
+                    #merge_var_tail_two_generic_rhs,
+            }
+        } else {
+            quote! {
+                #split_for_3 #merge_var_split_right_ty:
+                    #inner_trait<::inception::False, #merge_var_head_out_ty, Out> #merge_var_tail_extra_bounds + Fields,
+            }
+        };
+        let join_fields_inner_bound = if flow_assoc_borrow_mode {
+            match kind {
+                Kind::Ref => quote! {
+                    for<'a, 'b> #wrapper<&'a <T as Inception<#property>>::#fields_ident<'b>>:
+                        #inner_trait<::inception::False, In, Out, Ret = #flow_assoc_join_ret_ident>,
+                },
+                Kind::Mut => quote! {
+                    for<'a, 'b> #wrapper<&'a mut <T as Inception<#property>>::#fields_ident<'b>>:
+                        #inner_trait<::inception::False, In, Out, Ret = #flow_assoc_join_ret_ident>,
+                },
+                _ => quote! {
+                    for<#lifepunct1 #life2> #join_wrapper_fields_ty:
+                        #inner_trait<::inception::False, In, Out>,
+                },
+            }
+        } else {
+            quote! {
+                for<#lifepunct1 #life2> #join_wrapper_fields_ty: #inner_trait<::inception::False, In, Out> #join_fields_bounds,
+            }
+        };
+        let join_named_output_eq_bound = quote! {};
+        let join_named_output_bound = quote! {};
+        let merge_inner_head_extra_bounds = if merge_extra_generics.is_empty() {
+            quote! { #merge_field_head_bounds }
+        } else {
+            quote! {}
+        };
+        let merge_inner_head_bound = if flow_two_generic {
+            quote! { ::inception::IsPrimitive<#property> }
+        } else {
+            if flow_assoc_borrow_mode {
+                quote! {
+                    #inner_trait<<#merge_head_ident as ::inception::IsPrimitive<#property>>::Is, In> + ::inception::IsPrimitive<#property>
+                }
+            } else {
+                quote! {
+                    #inner_trait<<#merge_head_ident as ::inception::IsPrimitive<#property>>::Is, In> #merge_inner_head_extra_bounds + ::inception::IsPrimitive<#property>
+                }
+            }
+        };
+        let merge_var_inner_head_extra_bounds = if merge_var_extra_generics.is_empty() {
+            quote! { #merge_var_field_head_bounds }
+        } else {
+            quote! {}
+        };
+        let merge_var_inner_head_bound = if flow_two_generic {
+            quote! { ::inception::IsPrimitive<#property> }
+        } else {
+            quote! {
+                #inner_trait<<#merge_var_head_ident as ::inception::IsPrimitive<#property>>::Is, In> #merge_var_inner_head_extra_bounds + ::inception::IsPrimitive<#property>
+            }
+        };
+        let empty_impl_generics = if flow_mode {
+            quote! { <In, Out> }
+        } else {
+            quote! { <In> }
+        };
+        let empty_impl_trait_args = if flow_mode {
+            quote! { <::inception::False, In, Out> }
+        } else {
+            quote! { <::inception::False, In> }
+        };
+        let merge_var_args = if merge_var_args.is_empty() {
+            quote! {}
+        } else {
+            quote! { , #merge_var_args }
+        };
         let merge_args = if merge_args.is_empty() {
             quote! {}
         } else {
             quote! { , #merge_args }
         };
-        let merge_var_args = if merge_args.is_empty() {
+        let nothing_args = if nothing_args.is_empty() {
             quote! {}
         } else {
-            quote! { , #merge_var_args }
+            quote! { #nothing_args }
         };
         let (join_args, join_trait_args) = if is_comparator {
-            (
-                quote! {
-                    , #join_arg_idents: #mutref Self
-                },
-                quote! { , #join_arg_idents: F },
-            )
-        } else if join_args.is_empty() {
+            let join_args = if is_type_style {
+                quote! { #join_arg_idents: #mutref Self }
+            } else {
+                quote! { , #join_arg_idents: #mutref Self }
+            };
+            (join_args, quote! { , #join_arg_idents: F })
+        } else if join_extra_args.is_empty() {
             (quote! {}, quote! {})
         } else {
+            let join_fn_args = if is_type_style {
+                quote! { #join_extra_args }
+            } else {
+                quote! { , #join_extra_args }
+            };
             (
-                quote! {
-                    , #join_args
-                },
-                quote! { , #join_args },
+                join_fn_args,
+                quote! { , #join_extra_args },
             )
+        };
+        let flow_merge_input_ident = merge_arg_idents
+            .iter()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| format_ident!("_in"));
+        let flow_join_input_ident = join_arg_idents
+            .iter()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| format_ident!("_in"));
+        let merge_impl_ret_ty = if flow_assoc_borrow_mode {
+            quote! { <#merge_fields_ident as #inner_trait<::inception::False, #merge_head_out_ty, Out>>::Ret }
+        } else {
+            quote! { #merge_ret }
+        };
+        let flow_assoc_merge_ret_generic = if flow_assoc_borrow_mode {
+            quote! { , #flow_assoc_merge_ret_ident }
+        } else {
+            quote! {}
+        };
+        let flow_assoc_join_ret_generic = if flow_assoc_borrow_mode {
+            quote! { , #flow_assoc_join_ret_ident }
+        } else {
+            quote! {}
+        };
+        let merge_impl_body = if flow_assoc_borrow_mode {
+            match kind {
+                Kind::Ref => quote! {
+                    {
+                        let next = <#merge_head_ident as #inner_trait<<#merge_head_ident as ::inception::IsPrimitive<#property>>::Is, In>>::#inner_fn(
+                            #merge_head_arg.access(),
+                            #flow_merge_input_ident,
+                        );
+                        <#merge_fields_ident as #inner_trait<::inception::False, #merge_head_out_ty, Out>>::#inner_fn(
+                            &#merge_fields_arg,
+                            next,
+                        )
+                    }
+                },
+                Kind::Mut => quote! {
+                    {
+                        let next = <#merge_head_ident as #inner_trait<<#merge_head_ident as ::inception::IsPrimitive<#property>>::Is, In>>::#inner_fn(
+                            #merge_head_arg.access(),
+                            #flow_merge_input_ident,
+                        );
+                        <#merge_fields_ident as #inner_trait<::inception::False, #merge_head_out_ty, Out>>::#inner_fn(
+                            &mut #merge_fields_arg,
+                            next,
+                        )
+                    }
+                },
+                _ => quote! { #merge_body },
+            }
+        } else {
+            quote! { #merge_body }
+        };
+        let join_impl_body = if flow_assoc_borrow_mode {
+            match kind {
+                Kind::Ref => quote! {
+                    {
+                        <#join_fields_ident as #inner_trait<::inception::False, In, Out>>::#inner_fn(
+                            &#join_fields_arg,
+                            #flow_join_input_ident,
+                        )
+                    }
+                },
+                Kind::Mut => quote! {
+                    {
+                        <#join_fields_ident as #inner_trait<::inception::False, In, Out>>::#inner_fn(
+                            &mut #join_fields_arg,
+                            #flow_join_input_ident,
+                        )
+                    }
+                },
+                _ => quote! { #join_body },
+            }
+        } else {
+            quote! { #join_body }
         };
         let merge_arg_idents = if merge_arg_idents.is_empty() {
             quote! {}
@@ -1143,19 +2303,18 @@ impl State {
             quote! { , #join_arg_idents }
         };
 
-        quote! {
+        let expanded = quote! {
                 pub struct #property_ident;
-                #vis trait #trait_ident {
-                    fn #fn_ident(#mutref #receiver #fn_args) -> #fn_ret;
+                #vis trait #trait_ident #trait_generic_params #trait_supertrait_clause #trait_where_clause {
+                    #(#assoc_trait_items)*
+                    fn #fn_ident(#mutref #receiver #fn_args) -> #fn_ret_public;
                 }
 
                 mod #mod_ident {
                     use inception::{Wrapper, TruthValue, IsPrimitive, meta::Metadata, True, False};
 
                     impl ::inception::Property for super::#property_ident {}
-                    impl<T> ::inception::Compat<T> for super::#property_ident where T: super::#trait_ident {
-                        type Out = True;
-                    }
+                    #compat_impl
 
                     pub struct Wrap<T>(pub T);
                     impl<T> Wrapper for Wrap<T> {
@@ -1168,91 +2327,113 @@ impl State {
                     impl<T> IsPrimitive<super::#property_ident> for Wrap<T> {
                         type Is = False;
                     }
-                    pub trait #inductive_ident<P: TruthValue = <Self as IsPrimitive<super::#property_ident>>::Is> {
+                    pub trait #inductive_ident<P: TruthValue = <Self as IsPrimitive<super::#property_ident>>::Is, In = (), Out = In> {
                         type Property: ::inception::Property;
+                        type InTy;
+                        type OutTy;
                         type Ret;
-                        fn #inner_fn(#mutref #receiver #fn_args) -> Self::Ret;
+                        fn #inner_fn(#mutref #receiver #inner_fn_args) -> Self::Ret;
                     }
-                    impl<T> #inductive_ident<True> for T
+                    impl #primitive_impl_generics #inductive_ident #primitive_impl_trait_args for T
                     where
-                        T: super::#trait_ident + IsPrimitive<super::#property_ident, Is = True>,
+                        T: #trait_bound_with_in + IsPrimitive<super::#property_ident, Is = True>,
                     {
                         type Property = super::#property_ident;
-                        type Ret = #fn_ret;
-                        fn #inner_fn(#mutref #receiver #fn_args) -> Self::Ret {
+                        type InTy = In;
+                        type OutTy = #primitive_out_ty;
+                        type Ret = #primitive_ret;
+                        fn #inner_fn(#mutref #receiver #inner_fn_args) -> Self::Ret {
                             #dispatcher #fn_ident( #fn_arg_idents )
                         }
                     }
 
-                    pub trait Nothing {
+                    pub trait Nothing<In = ()> {
+                        type InTy;
+                        type OutTy;
                         type Ret;
-                        fn nothing() -> Self::Ret;
+                        fn nothing(#nothing_args) -> Self::Ret;
                     }
-                    pub trait MergeField<L, R> {
+                    pub trait MergeField<L, R, In = (), Out = In, Extra = ()> {
+                        type InTy;
+                        type OutTy;
                         type Ret;
                         fn merge_field(l: L, r: R #merge_args) -> Self::Ret;
                     }
-                    pub trait MergeVariantField<L, R> {
+                    pub trait MergeVariantField<L, R, In = (), Out = In, Extra = ()> {
+                        type InTy;
+                        type OutTy;
                         type Ret;
                         fn merge_variant_field(l: L, r: R #merge_var_args) -> Self::Ret;
                     }
-                    pub trait Join<F> {
+                    pub trait Join<F, In = (), Out = In> {
+                        type InTy;
+                        type OutTy;
                         type Ret;
                         fn join(fields: F #join_trait_args) -> Self::Ret;
                     }
+                    #borrow_output_helpers
                 }
 
-                impl<T> #trait_ident for T
+                #blanket_impl_head
                 where
-                    T: #inner_trait <::inception::False, Ret = #fn_ret>,
+                    T: #blanket_inner_bound #trait_supertrait_bounds,
                 {
-                    fn #fn_ident(#mutref #receiver #fn_args) -> #fn_ret {
+                    #(#assoc_impl_items)*
+                    fn #fn_ident(#mutref #receiver #fn_args) -> #fn_ret_public {
                         #dispatcher #inner_fn(#fn_arg_idents)
                     }
                 }
 
-                impl<T> #mod_ident :: Nothing for T {
+                impl<T, In> #mod_ident :: Nothing<In> for T {
+                    type InTy = In;
+                    type OutTy = In;
                     type Ret = #nothing_ret;
-                    fn nothing() -> Self::Ret {
+                    fn nothing(#nothing_args) -> Self::Ret {
                         #nothing_body
                     }
                 }
-                impl<#lifepunct1 #merge_head_ident, S, const IDX: usize, F, L, #merge_fields_ident> #mod_ident :: MergeField<L, #merge_fields_ident>
+                impl #merge_field_impl_generics #mod_ident :: MergeField #merge_field_impl_trait_args
                     for #wrapper<#liferefelide List<(#field<#lifepunct1 #merge_head_ident, S, IDX>, F)>>
                 where
                     S: FieldsMeta,
-                    #merge_head_ident: #inner_trait #merge_field_head_bounds + ::inception::IsPrimitive<#property>,
+                    #merge_head_ident: #merge_field_head_bound,
                     F: Fields #phantom_bound,
                     L: Field #access_bound,
-                    #merge_fields_ident: Fields + #inner_trait #merge_fields_bounds + ::inception::IsPrimitive<#property>,
+                    #merge_fields_ident: #merge_field_tail_bound,
                 {
-                    type Ret = #merge_ret;
+                    type InTy = In;
+                    type OutTy = #merge_field_impl_out_ty;
+                    type Ret = #merge_impl_ret_ty;
                     fn merge_field(#mutability #merge_head_arg: L, #mutability #merge_fields_arg: #merge_fields_ident #merge_args) -> Self::Ret {
-                        #merge_body
+                        #merge_impl_body
                     }
                 }
-                impl<#lifepunct1 #merge_var_head_ident, S, const VAR_IDX: usize, const IDX: usize, F, L, #merge_var_fields_ident> #mod_ident :: MergeVariantField<L, #merge_var_fields_ident>
+                impl #merge_variant_impl_generics #mod_ident :: MergeVariantField #merge_variant_impl_trait_args
                     for #wrapper<#liferefelide List<(#var_field<#lifepunct1 #merge_var_head_ident, S, VAR_IDX, IDX>, F)>>
                 where
                     S: FieldsMeta + EnumMeta + VariantOffset<VAR_IDX>,
-                    #merge_var_head_ident: #inner_trait #merge_var_field_head_bounds + ::inception::IsPrimitive<#property>,
+                    #merge_var_head_ident: #merge_variant_head_bound,
                     F: Fields #phantom_bound,
                     L: Field<Source = S> + VarField #try_access_bound,
-                    #merge_var_fields_ident: Fields + #inner_trait #merge_var_fields_bounds + ::inception::IsPrimitive<#property>,
+                    #merge_var_fields_ident: #merge_variant_tail_bound,
                 {
+                    type InTy = In;
+                    type OutTy = #merge_variant_impl_out_ty;
                     type Ret = #merge_var_ret;
                     fn merge_variant_field(#mutability #merge_var_head_arg: L, #mutability #merge_var_fields_arg: #merge_var_fields_ident #merge_var_args) -> Self::Ret {
                         #merge_var_body
                     }
                 }
-                impl<T, #join_fields_ident> #mod_ident :: Join<#join_fields_ident> for T
+                impl #join_impl_generics #mod_ident :: Join #join_impl_trait_args for T
                 where
                     T: Inception<#property>,
-                    #join_fields_ident: #inner_trait #join_fields_bounds + ::inception::IsPrimitive<#property>,
+                    #join_fields_ident: #join_fields_bound #join_named_output_bound,
                 {
-                    type Ret = #join_ret;
+                    type InTy = In;
+                    type OutTy = #join_impl_out_ty;
+                    type Ret = #join_impl_ret_ty;
                     fn join(#mutability #join_fields_arg: #join_fields_ident #join_trait_args) -> Self::Ret {
-                        #join_body
+                        #join_impl_body
                     }
                 }
 
@@ -1277,76 +2458,81 @@ impl State {
 
                 #split_impl
 
-                impl #inner_trait for #wrapper<#liferefelide List<()>> {
+                impl #empty_impl_generics #inner_trait #empty_impl_trait_args for #wrapper<#liferefelide List<()>> {
                     type Property = #property;
+                    type InTy = <Self as #mod_ident :: Nothing<In>>::InTy;
+                    type OutTy = <Self as #mod_ident :: Nothing<In>>::OutTy;
                     type Ret = #nothing_ret;
                     #[allow(unused)]
-                    fn #inner_fn(#mutref #receiver #fn_args) -> Self::Ret {
-                        <Self as #mod_ident :: Nothing>::nothing()
+                    fn #inner_fn(#mutref #receiver #inner_fn_args) -> Self::Ret {
+                        <Self as #mod_ident :: Nothing<In>>::nothing(#nothing_arg_idents)
                     }
                 }
 
-                impl<#merge_head_ident, S, const IDX: usize, F> #inner_trait for #wrapper<#liferefelide List<(#field<#lifepunctelide #merge_head_ident, S, IDX>, F)>>
+                impl<#ret_lifetime_decl #merge_head_ident, S, const IDX: usize, F, In, Out #flow_assoc_merge_ret_generic> #inner_trait<::inception::False, In, Out> for #merge_inductive_self_ty
                 where
                     S: FieldsMeta,
-                    #merge_head_ident: #inner_trait #merge_field_head_bounds + ::inception::IsPrimitive<#property>,
+                    #merge_head_ident: #merge_inner_head_bound,
                     F: Fields #phantom_bound,
                     <F as Fields>::Owned: Fields,
-                    for<#lifepunct1 #life2> #wrapper<#liferef1 List<(#field<#lifepunct2 #merge_head_ident, S, IDX>, F)>>:
-                        #split_trait_ident<#property, Left = #field<#lifepunct2 #merge_head_ident, S, IDX>>,
-                    for<#lifepunct1 #lifepunct2 #life3> #wrapper<#liferef1 <#wrapper<#liferef2 List<(#field<#lifepunct3 #merge_head_ident, S, IDX>, F)>> as #split_trait_ident<#property>>::Right>:
-                        #inner_trait #merge_fields_bounds + Fields,
+                    #merge_split_bound
+                    #merge_tail_bound
+                    #merge_named_output_eq_bound
                 {
                     type Property = #property;
-                    type Ret = #merge_ret;
-                    fn #inner_fn(#mutref #receiver #fn_args) -> Self::Ret {
+                    type InTy = In;
+                    type OutTy = Out;
+                    type Ret = #merge_ret_inductive;
+                    fn #inner_fn(#mutref #receiver #inner_fn_args) -> Self::Ret {
                         use #split_trait_ident;
                         let (#mutability l, #mutability r) = #dispatcher #split_fn_ident(#split_fn_receiver);
                         let #mutability r = #wrapper(r);
                         #merge_comparator_body
-                        <Self as #mod_ident :: MergeField<_, _>>::merge_field(l, r #merge_arg_idents)
+                        <Self as #mod_ident :: MergeField #merge_call_trait_args>::merge_field(l, r #merge_arg_idents)
                     }
                 }
 
-                impl<#merge_var_head_ident, S, const VAR_IDX: usize, const IDX: usize, F> #inner_trait
-                    for #wrapper<#liferefelide List<(#var_field<#lifepunctelide #merge_var_head_ident, S, VAR_IDX, IDX>, F)>>
+                impl<#ret_lifetime_decl #merge_var_head_ident, S, const VAR_IDX: usize, const IDX: usize, F, In, Out> #inner_trait<::inception::False, In, Out>
+                    for #merge_var_inductive_self_ty
                 where
                     S: FieldsMeta + EnumMeta + VariantOffset<VAR_IDX>,
-                    #merge_var_head_ident: #inner_trait #merge_var_field_head_bounds + ::inception::IsPrimitive<#property>,
+                    #merge_var_head_ident: #merge_var_inner_head_bound,
                     F: Fields #phantom_bound,
                     <F as Fields>::Owned: Fields,
-                    for<#lifepunct1 #life2> #wrapper<#liferef1 List<(#var_field<#lifepunct2 #merge_var_head_ident, S, VAR_IDX, IDX>, F)>>:
-                        #split_trait_ident<#property, Left = #var_field<#lifepunct2 #merge_var_head_ident, S, VAR_IDX, IDX>>,
-                    for<#lifepunct1 #lifepunct2 #life3> #wrapper<#liferef1 <#wrapper<#liferef2 List<(#var_field<#lifepunct3 #merge_var_head_ident, S, VAR_IDX, IDX>, F)>> as #split_trait_ident<#property>>::Right>:
-                        #inner_trait #merge_var_fields_bounds + Fields,
+                    #merge_var_split_bound
+                    #merge_var_tail_bound
                 {
                     type Property = #property;
-                    type Ret = #merge_var_ret;
-                    fn #inner_fn(#mutref #receiver #fn_args) -> Self::Ret {
+                    type InTy = In;
+                    type OutTy = Out;
+                    type Ret = #merge_var_ret_inductive;
+                    fn #inner_fn(#mutref #receiver #inner_fn_args) -> Self::Ret {
                         use #split_trait_ident;
                         let (#mutability l, #mutability r) = #dispatcher #split_fn_ident(#split_fn_receiver);
                         let #mutability r = #wrapper(r);
                         #merge_var_comparator_body
-                        <Self as #mod_ident :: MergeVariantField<_, _>>::merge_variant_field(l, r #merge_var_arg_idents)
+                        <Self as #mod_ident :: MergeVariantField #merge_variant_call_trait_args>::merge_variant_field(l, r #merge_var_arg_idents)
                     }
                 }
 
-                impl<T> #inner_trait<False> for T
+                impl<T, In, Out #flow_assoc_join_ret_generic> #inner_trait<False, In, Out> for T
                 where
                     T: Inception<#property> + Meta,
-                    for<#lifepunct1 #life2> #wrapper<#liferef1 <T as Inception<#property>>::#fields_ident #bracketlife2>: #inner_trait #join_fields_bounds,
+                    #join_fields_inner_bound
+                    #join_named_output_eq_bound
                 {
                     type Property = #property;
-                    type Ret = #join_ret;
+                    type InTy = In;
+                    type OutTy = Out;
+                    type Ret = #join_ret_inductive;
                     fn #inner_fn(#mutref #receiver #join_args) -> Self::Ret {
-                        use #mod_ident :: Join;
                         #fields_fn
                         let f = #wrapper(#mutref fields);
                         #join_comparator_body
-                        Self::join(f #join_arg_idents)
+                        <Self as #mod_ident :: Join #join_call_trait_args>::join(f #join_arg_idents)
                     }
                 }
-            }
-            .into()
+            };
+        expanded.into()
     }
 }
