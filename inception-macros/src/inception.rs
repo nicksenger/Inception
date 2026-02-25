@@ -2376,7 +2376,7 @@ impl State {
 
                 #blanket_impl_head
                 where
-                    T: #blanket_inner_bound #trait_supertrait_bounds,
+                    T: #blanket_inner_bound + ::inception::IsPrimitive<#property, Is = ::inception::False> #trait_supertrait_bounds,
                 {
                     #(#assoc_impl_items)*
                     fn #fn_ident(#mutref #receiver #fn_args) -> #fn_ret_public {
