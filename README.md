@@ -1,6 +1,6 @@
 **2026-02-24 Update:**
 
-I've been away from this for a while, but ran into a case the other day where I thought about reaching for a proc-macro: I wanted to use types to express a system of dependencies / pipeline / series of operations, something like:
+I've been away from this for a while, but ran into a case the other day where I thought about reaching for a proc-macro: I wanted to use types to express a series of operations, something like:
 
 ```rust
 #[pipeline]
@@ -11,7 +11,7 @@ struct MyPipeline {
 }
 ```
 
-But since I try to stay out of macro-land as much as possible, I decided to go the Inception way instead. What I found was disheartening: not only were there *bugs in my beloved Inception*, it was also **not possible** to express what I was trying to achieve! So I put on my macro-cap on and did the following:
+But since I try to stay out of macro-land as much as possible, I decided to go the Inception way instead. What I found was disheartening: not only were there *bugs in my precious Inception*, it was also **not possible** to express what I was trying to achieve! So I put on my macro-cap on and did the following:
 
 - Fix the `primitive` proc-macro so that generic types can be used as primitives. This is necessary for useful composition, and was my original intent, I just messed up the proc-macro on the first pass and it didn't matter for any of the examples.
 - Allow inputs in Type-level #[inception] traits (ones which don't have a *self-receiver), this was also just a bug, no new intent.
@@ -66,7 +66,9 @@ pub fn run_the_pipeline(input: u8) -> Vec<u8> {
 
 Supports all type-level/ref/mut-ref/owned variants, and the type information is properly retained / threaded through the induction method.
 
-I expect it's possible to do some truly strange and terrible things with this, and am excited to see what people will achieve! As always, code responsibly... and stay safe out there.
+I expect it's possible to do some truly strange and terrible things with this. The new "arrow" example in inception-test showcases something akin to arrow-combinators with derive-macro style composition semantics using structural induction! It's everything we've ever wanted since we were kids.
+
+Anyways, I'm excited to see what people will achieve. Code responsibly... and stay safe out there.
 
 
 # _Inception_

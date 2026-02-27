@@ -1,6 +1,6 @@
 use inception::*;
 
-#[inception(property = Perform)]
+#[inception(property = Perform, signature(input = Input, output = Output))]
 pub trait Performer<Input> {
     type Output;
 
@@ -78,7 +78,7 @@ pub struct NestedPipeline {
     _tail: AddOne,
 }
 
-#[inception(property = PerformRef)]
+#[inception(property = PerformRef, signature(input = Input, output = Output))]
 pub trait RefPerformer<Input> {
     type Output;
 
@@ -136,7 +136,7 @@ pub struct RefPipeline {
     _b: RefLen,
 }
 
-#[inception(property = PerformMut)]
+#[inception(property = PerformMut, signature(input = Input, output = Output))]
 pub trait MutPerformer<Input> {
     type Output;
 
@@ -194,7 +194,7 @@ pub struct MutPipeline {
     _b: MutLen,
 }
 
-#[inception(property = PerformOwn)]
+#[inception(property = PerformOwn, signature(input = Input, output = Output))]
 pub trait OwnPerformer<Input> {
     type Output;
 
