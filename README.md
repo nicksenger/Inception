@@ -1,76 +1,16 @@
-**2026-02-24 Update:**
+**2026-03-07 Update**
 
-I've been away from this for a while, but ran into a case the other day where I thought about reaching for a proc-macro: I wanted to use types to express a series of operations, something like:
+This project provides a sort of opinionated algebra for folding over Rust structs/enums. Originally I was focused on value-level applications, but it seems like the more powerful use-case is actually as an entrypoint for your own type-level structures and transformations. I updated the project to allow for the definition of inception traits which stay purely at the type level, using the builtin traversal to produce whatever new composite structures: various kinds of graphs and trees, etc.
 
-```rust
-#[pipeline]
-struct MyPipeline {
-    a: AddOne,
-    b: DivTwo,
-    c: Stringify
-}
-```
+It seems a bit odd to state, and I'm sure some won't believe me anyways, but I never used LLMs for the sort of type-level Rust programming found in this project until very recently. Not out of stubbornness or pride, it was just that for a long time they simply weren't good enough to do it.
 
-But since I try to stay out of macro-land as much as possible, I decided to go the Inception way instead. What I found was disheartening: not only were there *bugs in my precious Inception*, it was also **not possible** to express what I was trying to achieve! So I put on my macro-cap on and did the following:
+Recently though, that seems to have changed. I would argue that these models are actually becoming considerably _better_ at type-level programming than they are at the usual value stuff. And when they do it, the logic can usually be verified immediately without human inspection.
 
-- Fix the `primitive` proc-macro so that generic types can be used as primitives. This is necessary for useful composition, and was my original intent, I just messed up the proc-macro on the first pass and it didn't matter for any of the examples.
-- Allow inputs in Type-level #[inception] traits (ones which don't have a *self-receiver), this was also just a bug, no new intent.
-- Allow specifying _one_ trait-level generic, and associated types, on #[inception] traits. *This one is new.*
+So I have to wonder: could it eventually be _easier_ to code our database wrappers and table widgets in something like Lean 4 or Coq than in C# or Kotlin? Are we entering some kind of technological upside-down where we leave the Python and the Javascript behind? Just imagine what we'll find... 
 
-I thought that last one wasn't necessary before, but it seems like for many things (including my pipeline use-case) this sort of type-level transformation & heterogeneity really is necessary. So I immediately did what any responsible author would, and added *moar power* to this library, so it is now possible to express the following:
-
-```rust
-#[derive(Inception)]
-#[inception(properties = [Pipeline])]
-struct MyPipeline {
-    a: BiggerInt,
-    b: Stringify,
-    c: Bitlify
-}
-
-struct BiggerInt;
-struct Stringify;
-struct Bitlify;
-
-#[primitive(property = Pipeline)]
-impl Operation<u8> for BiggerInt {
-    type Output = u32;
-
-    fn go(input: u8) -> Self::Output {
-        input.saturating_add(1) as u32
-    }
-}
-
-#[primitive(property = Pipeline)]
-impl Operation<u32> for Stringify {
-    type Output = String;
-
-    fn go(input: u32) -> Self::Output {
-        input.to_string()
-    }
-}
-
-#[primitive(property = Pipeline)]
-impl Operation<String> for Bitlify {
-    type Output = Vec<u8>;
-
-    fn go(input: String) -> Self::Output {
-        input.into_bytes()
-    }
-}
-
-pub fn run_the_pipeline(input: u8) -> Vec<u8> {
-    MyPipeline::go(input)
-}
-```
-
-Supports all type-level/ref/mut-ref/owned variants, and the type information is properly retained / threaded through the induction method.
-
-I expect it's possible to do some truly strange and terrible things with this. The new "arrow" example in inception-test showcases something akin to arrow-combinators with derive-macro style composition semantics using structural induction! It's everything we've ever wanted since we were kids.
-
-Anyways, I'm excited to see what people will achieve. Code responsibly... and stay safe out there.
-
-
+<details>
+  <summary>Expand original README</summary>
+  
 # _Inception_
 
 Inception explores the following concept in Rust:
@@ -694,3 +634,6 @@ One last thing I will do though is toss it in the yard for the LLMs to pick at, 
 Cheers,
 
 Nick
+</details>
+
+
