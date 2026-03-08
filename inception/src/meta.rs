@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 use crate::{field::VarField, False, Field, Fields, Property, True, TruthValue};
 
 pub trait DataType {
-    const NAME: &str;
+    const NAME: &'static str;
     type Ty;
 }
 pub struct InternalTy;
@@ -14,13 +14,13 @@ impl<T> DataType for T
 where
     T: Fields,
 {
-    const NAME: &str = "Fields";
+    const NAME: &'static str = "Fields";
     type Ty = InternalTy;
 }
 
 pub trait EnumMeta: DataType {
-    const VARIANT_NAMES: &[&str];
-    const FIELD_NAMES: &[&[&str]];
+    const VARIANT_NAMES: &'static [&'static str];
+    const FIELD_NAMES: &'static [&'static [&'static str]];
 }
 pub trait Meta<K = <Self as DataType>::Ty>: DataType {
     fn metadata() -> Metadata;
@@ -73,7 +73,7 @@ where
 }
 
 pub trait NamedFieldsMeta<K = <Self as DataType>::Ty>: DataType {
-    const FIELD_NAMES: &[&str];
+    const FIELD_NAMES: &'static [&'static str];
 }
 pub trait UnnamedFieldsMeta<K = <Self as DataType>::Ty>: DataType {
     const NUM_FIELDS: usize;
@@ -136,16 +136,16 @@ pub trait VariantOffset<const N: usize> {
 }
 
 pub trait VariantMeta {
-    const VARIANT_NAME: &str;
-    const VARIANT_FIELD_NAMES: &[&str];
+    const VARIANT_NAME: &'static str;
+    const VARIANT_FIELD_NAMES: &'static [&'static str];
 }
 impl<T> VariantMeta for T
 where
     T: VarField,
     <T as Field>::Source: EnumMeta,
 {
-    const VARIANT_NAME: &str =
+    const VARIANT_NAME: &'static str =
         <<T as Field>::Source as EnumMeta>::VARIANT_NAMES[<T as VarField>::VAR_IDX];
-    const VARIANT_FIELD_NAMES: &[&str] =
+    const VARIANT_FIELD_NAMES: &'static [&'static str] =
         <<T as Field>::Source as EnumMeta>::FIELD_NAMES[<T as VarField>::VAR_IDX];
 }

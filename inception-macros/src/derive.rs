@@ -84,7 +84,7 @@ impl State {
                 let fields_meta = if is_named {
                     quote! {
                         impl #impl_generics ::inception::NamedFieldsMeta for #name #ty_generics #where_clause {
-                            const FIELD_NAMES: &[&str] = &[#(#field_names),*];
+                            const FIELD_NAMES: &'static [&'static str] = &[#(#field_names),*];
                         }
                     }
                 } else {
@@ -113,7 +113,7 @@ impl State {
                 quote! {
                     #opts
                     impl #impl_generics ::inception::DataType for #name #ty_generics #where_clause {
-                        const NAME: &str = stringify!(#name);
+                        const NAME: &'static str = stringify!(#name);
                         type Ty = ::inception::StructTy<#is_named>;
                     }
                     impl #impl_generics ::inception::StructMeta for #name #ty_generics #where_clause {
@@ -217,12 +217,12 @@ impl State {
                 quote! {
                     #opts
                     impl #impl_generics ::inception::DataType for #name #ty_generics #where_clause {
-                        const NAME: &str = stringify!(#name);
+                        const NAME: &'static str = stringify!(#name);
                         type Ty = ::inception::EnumTy;
                     }
                     impl #impl_generics ::inception::EnumMeta for #name #ty_generics #where_clause {
-                        const VARIANT_NAMES: &[&str] = &[#(#variant_names),*];
-                        const FIELD_NAMES: &[&[&str]] = &[#(&[#(#var_field_names),*]),*];
+                        const VARIANT_NAMES: &'static [&'static str] = &[#(#variant_names),*];
+                        const FIELD_NAMES: &'static [&'static [&'static str]] = &[#(&[#(#var_field_names),*]),*];
                     }
                     #(#padding)*
                     impl #transform_generics ::inception::IsPrimitive<X> for #name #ty_generics #where_clause {
@@ -275,10 +275,14 @@ impl EnumState {
                 type TyFields = ::inception::enum_field_tys![#(#fields),*];
             },
             Kind::Ref => quote! {
-                type RefFields<'a> = <Self::TyFields as ::inception::Fields>::Referenced<'a>;
+                type RefFields<'__inception_ref> = <Self::TyFields as ::inception::Fields>::Referenced<'__inception_ref>
+                where
+                    Self: '__inception_ref;
             },
             Kind::Mut => quote! {
-                type MutFields<'a> = <Self::TyFields as ::inception::Fields>::MutablyReferenced<'a>;
+                type MutFields<'__inception_mut> = <Self::TyFields as ::inception::Fields>::MutablyReferenced<'__inception_mut>
+                where
+                    Self: '__inception_mut;
             },
             Kind::Owned => quote! {
                 type OwnedFields = <Self::TyFields as ::inception::Fields>::Owned;
@@ -407,7 +411,7 @@ impl EnumState {
             },
 
             Kind::Mut => quote! {
-                fn fields_mut<'a: 'b, 'b>(&'a mut self, header: &'b mut ::inception::VariantHeader) -> Self::MutFields<'b> {
+                fn fields_mut<'__inception_self: '__inception_out, '__inception_out>(&'__inception_self mut self, header: &'__inception_out mut ::inception::VariantHeader) -> Self::MutFields<'__inception_out> {
                     use ::inception::{Pad, Mask, Phantom, VarMutField, list};
                     let mut fields = Self::MutFields::phantom();
                     match self {
@@ -531,10 +535,14 @@ impl StructState {
                 type TyFields = ::inception::struct_field_tys![#(#ixs,#tys),*];
             },
             Kind::Ref => quote! {
-                type RefFields<'a> = <Self::TyFields as ::inception::Fields>::Referenced<'a>;
+                type RefFields<'__inception_ref> = <Self::TyFields as ::inception::Fields>::Referenced<'__inception_ref>
+                where
+                    Self: '__inception_ref;
             },
             Kind::Mut => quote! {
-                type MutFields<'a> = <Self::TyFields as ::inception::Fields>::MutablyReferenced<'a>;
+                type MutFields<'__inception_mut> = <Self::TyFields as ::inception::Fields>::MutablyReferenced<'__inception_mut>
+                where
+                    Self: '__inception_mut;
             },
             Kind::Owned => quote! {
                 type OwnedFields = <Self::TyFields as ::inception::Fields>::Owned;
@@ -596,7 +604,7 @@ impl StructState {
             },
 
             Kind::Mut => quote! {
-                fn fields_mut<'a: 'b, 'b>(&'a mut self, header: &'b mut ::inception::VariantHeader) -> Self::MutFields<'b> {
+                fn fields_mut<'__inception_self: '__inception_out, '__inception_out>(&'__inception_self mut self, header: &'__inception_out mut ::inception::VariantHeader) -> Self::MutFields<'__inception_out> {
                     ::inception::list![#(#fields),*]
                 }
             },
