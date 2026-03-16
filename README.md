@@ -1,12 +1,8 @@
 **2026-03-07 Update**
 
-This project provides a sort of opinionated algebra for folding over Rust structs/enums. Originally I was focused on value-level applications, but it seems like the more powerful use-case is actually as an entrypoint for your own type-level structures and transformations. I updated the project to allow for the definition of inception traits which stay purely at the type level, using the builtin traversal to produce whatever new composite structures: various kinds of graphs and trees, etc.
+This project provides a sort of opinionated algebra for folding over Rust structs/enums. Originally I was focused on value-level applications, and you can find examples of many of those same behaviors provided by Rust standard library derive-macros implemented instead through type-level induction in `inception-test`. While it serves as an interesting demonstration of what's possible in Rust's type-system, as far as I know these examples provide no concrete benefit over the more conventional approach, so I can't recommend their use.
 
-It seems a bit odd to state, and I'm sure some won't believe me anyways, but I never used LLMs for the sort of type-level Rust programming found in this project until very recently. Not out of stubbornness or pride, it was just that for a long time they simply weren't good enough to do it.
-
-Recently though, that seems to have changed. I would argue that these models are actually becoming considerably _better_ at type-level programming than they are at the usual value stuff. And when they do it, the logic can usually be verified immediately without human inspection.
-
-So I have to wonder: could it eventually be _easier_ to code our database wrappers and table widgets in something like Lean 4 or Coq than in C# or Kotlin? Are we entering some kind of technological upside-down where we leave the Python and the Javascript behind? Just imagine what we'll find... 
+Recently, I updated the project to allow for the definition of inception traits which stay purely at the type level, so you can use the builtin traversal to produce recursive types such as various kinds of graphs and trees, etc from #[derive(Inception)] types. This can be useful for static analysis, etc.
 
 <details>
   <summary>Expand original README</summary>
