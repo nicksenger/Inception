@@ -4,9 +4,7 @@ use inception::*;
 pub trait Digest {
     fn digest(&self, state: &mut std::hash::DefaultHasher) -> ();
 
-    fn nothing() -> bool {
-        true
-    }
+    fn nothing() -> () {}
     fn merge<H: Digest, R: Digest>(l: L, r: R, state: &mut std::hash::DefaultHasher) -> () {
         l.access().digest(state);
         r.digest(state);
