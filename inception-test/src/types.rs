@@ -231,6 +231,28 @@ where
 {
 }
 
+pub trait NoBlanketPrimitive {}
+#[inception(property = NoBlanketTypeTree, types, no_blanket)]
+pub trait NoBlanketTypeNode {
+    #[induce(
+        base = List<()>,
+        merge = List<(Node<Head, <Head as NoBlanketTypeNode>::Children>, <Tail as NoBlanketTypeNode>::Children)>,
+        merge_variant = List<(Node<Head, <Head as NoBlanketTypeNode>::Children>, <Tail as NoBlanketTypeNode>::Children)>,
+        join = <Fields as NoBlanketTypeNode>::Children
+    )]
+    type Children;
+}
+
+impl<T> NoBlanketTypeNode for T
+where
+    T: NoBlanketPrimitive,
+{
+    type Children = List<()>;
+}
+
+pub struct NoBlanketLeaf;
+impl NoBlanketPrimitive for NoBlanketLeaf {}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -334,5 +356,10 @@ mod test {
                 List<(Node<bool, List<()>>, List<(Node<u8, List<()>>, List<()>)>)>
             )>
         );
+    }
+
+    #[test]
+    fn no_blanket_allows_trait_bounded_primitive_impl() {
+        assert_type_eq!(<NoBlanketLeaf as NoBlanketTypeNode>::Children, List<()>);
     }
 }

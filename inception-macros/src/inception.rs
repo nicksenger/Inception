@@ -25,6 +25,7 @@ struct Attributes {
     property: Ident,
     comparator: bool,
     types_only: bool,
+    no_blanket: bool,
     signature: Option<Signature>,
 }
 
@@ -118,6 +119,7 @@ impl Parse for Attributes {
         let mut property = None;
         let mut comparator = false;
         let mut types_only = false;
+        let mut no_blanket = false;
         let mut signature = None;
         for meta in metas {
             match meta {
@@ -135,6 +137,9 @@ impl Parse for Attributes {
                 }
                 Meta::Path(path) if path.is_ident("types") => {
                     types_only = true;
+                }
+                Meta::Path(path) if path.is_ident("no_blanket") => {
+                    no_blanket = true;
                 }
                 Meta::NameValue(nv) if nv.path.is_ident("comparator") => {
                     let Expr::Lit(expr_lit) = nv.value else {
@@ -163,7 +168,7 @@ impl Parse for Attributes {
                 _ => {
                     return Err(syn::Error::new_spanned(
                         meta,
-                        "Invalid `#[inception(...)]` argument. Expected `property = ...`, optional `comparator`, optional `types`, and optional `signature(input = ..., output = ...)`.",
+                        "Invalid `#[inception(...)]` argument. Expected `property = ...`, optional `comparator`, optional `types`, optional `no_blanket`, and optional `signature(input = ..., output = ...)`.",
                     ));
                 }
             }
@@ -178,6 +183,7 @@ impl Parse for Attributes {
             property,
             comparator,
             types_only,
+            no_blanket,
             signature,
         })
     }
@@ -1549,13 +1555,14 @@ impl State {
                     property,
                     comparator,
                     types_only,
+                    no_blanket,
                     signature,
                 } = match syn::parse::<Attributes>(attr) {
                     Ok(attrs) => attrs,
                     Err(e) => return e.into_compile_error().into(),
                 };
 
-                match State::process(x, property, comparator, types_only, signature) {
+                match State::process(x, property, comparator, types_only, no_blanket, signature) {
                     Ok(tt) => tt,
                     Err(tt) => tt,
                 }
@@ -1574,6 +1581,7 @@ impl State {
         property_ident: Ident,
         is_comparator: bool,
         is_types_only: bool,
+        no_blanket: bool,
         signature: Option<Signature>,
     ) -> Result<TokenStream, TokenStream> {
         let mut st = State {
@@ -1706,12 +1714,18 @@ impl State {
             return Err(syn::Error::new_spanned(tr, msg).into_compile_error().into());
         }
 
-        Ok(st.finish(is_comparator, is_types_only))
+        Ok(st.finish(is_comparator, is_types_only, no_blanket))
     }
 
-    fn finish(self, is_comparator: bool, is_types_only: bool) -> TokenStream {
+    fn finish(self, is_comparator: bool, is_types_only: bool, no_blanket: bool) -> TokenStream {
         if is_types_only {
-            return self.finish_types_only(is_comparator);
+            return self.finish_types_only(is_comparator, no_blanket);
+        }
+        if no_blanket {
+            let msg = "`no_blanket` is only supported with `types` mode.";
+            return syn::Error::new_spanned(self.trait_ident.clone(), msg)
+                .into_compile_error()
+                .into();
         }
 
         let State {
@@ -3984,7 +3998,7 @@ impl State {
         expanded.into()
     }
 
-    fn finish_types_only(self, is_comparator: bool) -> TokenStream {
+    fn finish_types_only(self, is_comparator: bool, no_blanket: bool) -> TokenStream {
         let State {
             mod_ident,
             trait_ident,
@@ -5308,6 +5322,20 @@ impl State {
             })
             .collect::<Vec<_>>();
 
+        let blanket_impl = if no_blanket {
+            quote! {}
+        } else {
+            quote! {
+                #blanket_impl_head
+                where
+                    #(#induced_blanket_where_preds)*
+                    T: ::inception::IsPrimitive<#property, Is = ::inception::False> #trait_supertrait_bounds,
+                {
+                    #(#assoc_impl_items)*
+                }
+            }
+        };
+
         let expanded = quote! {
             pub struct #property_ident;
             #vis trait #trait_ident #trait_generic_params #trait_supertrait_clause #trait_where_clause {
@@ -5337,13 +5365,7 @@ impl State {
                 #(#induced_assoc_helpers)*
             }
 
-            #blanket_impl_head
-            where
-                #(#induced_blanket_where_preds)*
-                T: ::inception::IsPrimitive<#property, Is = ::inception::False> #trait_supertrait_bounds,
-            {
-                #(#assoc_impl_items)*
-            }
+            #blanket_impl
         };
 
         expanded.into()
