@@ -23,6 +23,21 @@ pub use field::{
 };
 pub use ty::Nothing;
 
+#[macro_export]
+macro_rules! inception_field_aliases {
+    () => {
+        type RefFields<'__inception_ref>
+            = <Self::TyFields as $crate::Fields>::Referenced<'__inception_ref>
+        where
+            Self: '__inception_ref;
+        type MutFields<'__inception_mut>
+            = <Self::TyFields as $crate::Fields>::MutablyReferenced<'__inception_mut>
+        where
+            Self: '__inception_mut;
+        type OwnedFields = <Self::TyFields as $crate::Fields>::Owned;
+    };
+}
+
 pub trait Property {}
 pub trait OptIn<T: DataType> {}
 

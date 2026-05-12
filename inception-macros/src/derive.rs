@@ -72,10 +72,7 @@ impl State {
                     .into_iter()
                     .map(|n| proc_macro2::Literal::string(n.to_string().as_str()));
                 let is_named = state.field_identifiers.is_named();
-                let ty_fields = state.field_tokens(Kind::Ty, &inception);
-                let ref_fields = state.field_tokens(Kind::Ref, &inception);
-                let mut_fields = state.field_tokens(Kind::Mut, &inception);
-                let owned_fields = state.field_tokens(Kind::Owned, &inception);
+                let ty_fields = state.field_tokens(&inception);
                 let fields_impl = state.field_impl(Kind::Ref, &inception);
                 let fields_mut_impl = state.field_impl(Kind::Mut, &inception);
                 let into_fields_impl = state.field_impl(Kind::Owned, &inception);
@@ -139,9 +136,7 @@ impl State {
                     }
                     impl #transform_generics #inception::Inception<X, #inception::False> for #name #ty_generics #where_clause {
                         #ty_fields
-                        #ref_fields
-                        #mut_fields
-                        #owned_fields
+                        #inception::inception_field_aliases!();
                         #fields_impl
                         #fields_mut_impl
                         #into_fields_impl
@@ -152,10 +147,7 @@ impl State {
             }
 
             State::Enum(state) => {
-                let ty_fields = state.field_tokens(Kind::Ty, &inception);
-                let ref_fields = state.field_tokens(Kind::Ref, &inception);
-                let mut_fields = state.field_tokens(Kind::Mut, &inception);
-                let owned_fields = state.field_tokens(Kind::Owned, &inception);
+                let ty_fields = state.field_tokens(&inception);
                 let fields_impl = state.field_impl(Kind::Ref, &inception);
                 let fields_mut_impl = state.field_impl(Kind::Mut, &inception);
                 let into_fields_impl = state.field_impl(Kind::Owned, &inception);
@@ -243,9 +235,7 @@ impl State {
                     }
                     impl #transform_generics #inception::Inception<X, #inception::False> for #name #ty_generics #where_clause {
                         #ty_fields
-                        #ref_fields
-                        #mut_fields
-                        #owned_fields
+                        #inception::inception_field_aliases!();
                         #fields_impl
                         #fields_mut_impl
                         #into_fields_impl
@@ -267,18 +257,13 @@ pub struct EnumState {
 }
 
 enum Kind {
-    Ty,
     Ref,
     Mut,
     Owned,
 }
 
 impl EnumState {
-    fn field_tokens(
-        &self,
-        kind: Kind,
-        inception: &proc_macro2::TokenStream,
-    ) -> proc_macro2::TokenStream {
+    fn field_tokens(&self, inception: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let fields = self.field_tys.iter().enumerate().map(|(i, tys)| {
             let var_idx = proc_macro2::Literal::usize_unsuffixed(i);
             let ixs = (0..tys.len()).map(proc_macro2::Literal::usize_unsuffixed);
@@ -287,23 +272,8 @@ impl EnumState {
             }
         });
 
-        match kind {
-            Kind::Ty => quote! {
-                type TyFields = #inception::enum_field_tys![#(#fields),*];
-            },
-            Kind::Ref => quote! {
-                type RefFields<'__inception_ref> = <Self::TyFields as #inception::Fields>::Referenced<'__inception_ref>
-                where
-                    Self: '__inception_ref;
-            },
-            Kind::Mut => quote! {
-                type MutFields<'__inception_mut> = <Self::TyFields as #inception::Fields>::MutablyReferenced<'__inception_mut>
-                where
-                    Self: '__inception_mut;
-            },
-            Kind::Owned => quote! {
-                type OwnedFields = <Self::TyFields as #inception::Fields>::Owned;
-            },
+        quote! {
+            type TyFields = #inception::enum_field_tys![#(#fields),*];
         }
     }
 
@@ -326,9 +296,6 @@ impl EnumState {
                         Identifier::Unnamed(n) => {
                             let n = format_ident!("_{n}");
                             match kind {
-                                Kind::Ty => quote! {
-                                    VarTyField::new()
-                                },
                                 Kind::Ref => quote! {
                                     VarRefField::new(#n)
                                 },
@@ -344,9 +311,6 @@ impl EnumState {
                         Identifier::Named(n) => {
                             named = true;
                             match kind {
-                                Kind::Ty => quote! {
-                                    VarTyField::new()
-                                },
                                 Kind::Ref => quote! {
                                     VarRefField::new(#n)
                                 },
@@ -380,9 +344,6 @@ impl EnumState {
                 let field_ids = field_ids.clone();
 
                 let header = match kind {
-                    Kind::Ty => {
-                        quote! { VarTyField::header() }
-                    }
                     Kind::Ref => {
                         quote! { VarRefField::header(&#inception::VariantHeader) }
                     }
@@ -419,8 +380,6 @@ impl EnumState {
             .collect::<Vec<_>>();
 
         match kind {
-            Kind::Ty => quote! {},
-
             Kind::Ref => quote! {
                 fn fields(&self) -> Self::RefFields<'_> {
                     use #inception::{Pad, Mask, Phantom, VarRefField, list};
@@ -543,11 +502,7 @@ pub struct StructState {
 }
 
 impl StructState {
-    fn field_tokens(
-        &self,
-        kind: Kind,
-        inception: &proc_macro2::TokenStream,
-    ) -> proc_macro2::TokenStream {
+    fn field_tokens(&self, inception: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let (ixs, tys): (Vec<_>, Vec<_>) = self
             .field_tys
             .iter()
@@ -555,23 +510,8 @@ impl StructState {
             .map(|(i, x)| (proc_macro2::Literal::usize_unsuffixed(i), x))
             .unzip();
 
-        match kind {
-            Kind::Ty => quote! {
-                type TyFields = #inception::struct_field_tys![#(#ixs,#tys),*];
-            },
-            Kind::Ref => quote! {
-                type RefFields<'__inception_ref> = <Self::TyFields as #inception::Fields>::Referenced<'__inception_ref>
-                where
-                    Self: '__inception_ref;
-            },
-            Kind::Mut => quote! {
-                type MutFields<'__inception_mut> = <Self::TyFields as #inception::Fields>::MutablyReferenced<'__inception_mut>
-                where
-                    Self: '__inception_mut;
-            },
-            Kind::Owned => quote! {
-                type OwnedFields = <Self::TyFields as #inception::Fields>::Owned;
-            },
+        quote! {
+            type TyFields = #inception::struct_field_tys![#(#ixs,#tys),*];
         }
     }
 
@@ -588,9 +528,6 @@ impl StructState {
                     Identifier::Unnamed(n) => {
                         let idx = proc_macro2::Literal::usize_unsuffixed(*n);
                         match kind {
-                            Kind::Ty => quote! {
-                                #inception::TyField::new()
-                            },
                             Kind::Ref => quote! {
                                 #inception::RefField::new(&self.#idx)
                             },
@@ -604,9 +541,6 @@ impl StructState {
                     }
 
                     Identifier::Named(n) => match kind {
-                        Kind::Ty => quote! {
-                            #inception::TyField::new()
-                        },
                         Kind::Ref => quote! {
                             #inception::RefField::new(&self.#n)
                         },
@@ -620,12 +554,6 @@ impl StructState {
                 });
 
         match kind {
-            Kind::Ty => quote! {
-                fn ty_fields() -> Self::TyFields {
-                    #inception::list![#(#fields),*]
-                }
-            },
-
             Kind::Ref => quote! {
                 fn fields(&self) -> Self::RefFields<'_> {
                     #inception::list![#(#fields),*]
