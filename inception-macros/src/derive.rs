@@ -51,6 +51,13 @@ impl State {
         };
 
         let mut transform_generics = input.generics.clone();
+        let impl_params = input.generics.params.iter().cloned().collect::<Vec<_>>();
+        let where_preds = input
+            .generics
+            .where_clause
+            .as_ref()
+            .map(|wc| wc.predicates.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
 
         let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
@@ -100,9 +107,8 @@ impl State {
 
                 #[cfg(feature = "opt-in")]
                 let opts = quote! {
-                    #(
-                        impl #impl_generics #inception::OptIn<#name #ty_generics> for #properties where #where_clause {}
-                    )*
+                    #inception::inception_opt_in_declare!(impl [#(#impl_params),*] #name #ty_generics where [#(#where_preds),*] : [#(#properties),*]);
+                    #inception::inception_opt_in_register!(impl [#(#impl_params),*] #name #ty_generics where [#(#where_preds),*] : [#(#properties),*]);
                 };
                 #[cfg(not(feature = "opt-in"))]
                 let opts = quote! {};
@@ -199,9 +205,8 @@ impl State {
 
                 #[cfg(feature = "opt-in")]
                 let opts = quote! {
-                    #(
-                        impl #impl_generics #inception::OptIn<#name #ty_generics> for #properties where #where_clause {}
-                    )*
+                    #inception::inception_opt_in_declare!(impl [#(#impl_params),*] #name #ty_generics where [#(#where_preds),*] : [#(#properties),*]);
+                    #inception::inception_opt_in_register!(impl [#(#impl_params),*] #name #ty_generics where [#(#where_preds),*] : [#(#properties),*]);
                 };
                 #[cfg(not(feature = "opt-in"))]
                 let opts = quote! {};

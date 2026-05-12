@@ -173,7 +173,7 @@ pub trait IsPrimitive<X: Property> {
 impl<T, X> IsPrimitive<X> for T
 where
     X: Property + crate::OptIn<T>,
-    T: DerivedDataType + DataType,
+    T: DerivedDataType + DataType + crate::DerivedOptInList,
 {
     type Is = False;
 }
