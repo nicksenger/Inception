@@ -3,8 +3,8 @@
 pub use field::{Field, Fields};
 pub use inception_macros::{inception, primitive, Inception};
 pub use meta::{
-    DataType, EnumMeta, EnumTy, FieldsMeta, IsPrimitive, Meta, NamedFieldsMeta, StructMeta,
-    StructTy, UnnamedFieldsMeta, VariantOffset,
+    DataType, DerivedDataType, EnumMeta, EnumTy, FieldsMeta, IsPrimitive, Meta, NamedFieldsMeta,
+    StructMeta, StructTy, UnnamedFieldsMeta, VariantOffset,
 };
 pub use ty::{
     Compat, False, IntoTuples, List, Mask, Pad, Pad0, Pad1, Pad2, Pad3, Pad4, Pad5, Pad6, Pad7,

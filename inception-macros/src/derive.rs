@@ -131,9 +131,7 @@ impl State {
                             type NamedFields = #is_named;
                     }
                     #fields_meta
-                    impl #transform_generics #inception::IsPrimitive<X> for #name #ty_generics #where_clause {
-                        type Is = #inception::False;
-                    }
+                    impl #impl_generics #inception::DerivedDataType for #name #ty_generics #where_clause {}
                     impl #transform_generics #inception::Inception<X, #inception::False> for #name #ty_generics #where_clause {
                         #ty_fields
                         #inception::inception_field_aliases!();
@@ -230,9 +228,7 @@ impl State {
                         const FIELD_NAMES: &'static [&'static [&'static str]] = &[#(&[#(#var_field_names),*]),*];
                     }
                     #(#padding)*
-                    impl #transform_generics #inception::IsPrimitive<X> for #name #ty_generics #where_clause {
-                        type Is = #inception::False;
-                    }
+                    impl #impl_generics #inception::DerivedDataType for #name #ty_generics #where_clause {}
                     impl #transform_generics #inception::Inception<X, #inception::False> for #name #ty_generics #where_clause {
                         #ty_fields
                         #inception::inception_field_aliases!();

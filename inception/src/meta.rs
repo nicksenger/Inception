@@ -2,6 +2,9 @@ use core::marker::PhantomData;
 
 use crate::{field::VarField, False, Field, Fields, Property, True, TruthValue};
 
+#[doc(hidden)]
+pub trait DerivedDataType {}
+
 pub trait DataType {
     const NAME: &'static str;
     type Ty;
@@ -128,6 +131,24 @@ pub enum FieldsMetadata {
 
 pub trait IsPrimitive<X: Property> {
     type Is: TruthValue;
+}
+
+#[cfg(feature = "opt-in")]
+impl<T, X> IsPrimitive<X> for T
+where
+    X: Property + crate::OptIn<T>,
+    T: DerivedDataType + DataType,
+{
+    type Is = False;
+}
+
+#[cfg(not(feature = "opt-in"))]
+impl<T, X> IsPrimitive<X> for T
+where
+    X: Property,
+    T: DerivedDataType + DataType,
+{
+    type Is = False;
 }
 
 pub trait VariantOffset<const N: usize> {
