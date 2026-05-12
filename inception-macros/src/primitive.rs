@@ -2,12 +2,58 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenTree;
 use quote::quote;
 use std::collections::HashSet;
-use syn::{parse_macro_input, GenericParam, ItemImpl, Path};
+use syn::{
+    parse::{Parse, ParseStream},
+    parse_macro_input,
+    punctuated::Punctuated,
+    token::Comma,
+    Expr, GenericParam, ItemImpl, Meta, Path,
+};
 
-#[derive(deluxe::ParseMetaItem, deluxe::ExtractAttributes)]
-#[deluxe(attributes(primitive))]
 struct Attributes {
     property: Path,
+}
+
+impl Parse for Attributes {
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        let metas = Punctuated::<Meta, Comma>::parse_terminated(input)?;
+        let mut property = None;
+
+        for meta in metas {
+            match meta {
+                Meta::NameValue(nv) if nv.path.is_ident("property") => {
+                    if property.is_some() {
+                        return Err(syn::Error::new_spanned(
+                            nv.path,
+                            "Duplicate `property` setting.",
+                        ));
+                    }
+                    let Expr::Path(path_expr) = nv.value else {
+                        return Err(syn::Error::new_spanned(
+                            nv.value,
+                            "Expected `property` to be a path.",
+                        ));
+                    };
+                    property = Some(path_expr.path);
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "Unknown `primitive` setting.",
+                    ));
+                }
+            }
+        }
+
+        let Some(property) = property else {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "Missing `property = ...`.",
+            ));
+        };
+
+        Ok(Self { property })
+    }
 }
 
 pub struct State {}
@@ -47,10 +93,9 @@ impl State {
                     .to_compile_error()
                     .into();
                 };
-                let Ok(Attributes { property }) = deluxe::parse(attr) else {
-                    return syn::Error::new_spanned(x, "Expected \"property = ...\"")
-                        .into_compile_error()
-                        .into();
+                let Attributes { property } = match syn::parse(attr) {
+                    Ok(attrs) => attrs,
+                    Err(e) => return e.into_compile_error().into(),
                 };
                 let self_ty_tokens = quote! { #self_ty }.to_string();
                 let retained_params = x

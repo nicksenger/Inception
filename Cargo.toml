@@ -3,7 +3,6 @@ members = ["inception", "inception-macros", "inception-test"]
 resolver = "2"
 
 [workspace.dependencies]
-deluxe = "0.5"
 quote = "1"
 paste = "1"
 proc-macro-crate = "3"

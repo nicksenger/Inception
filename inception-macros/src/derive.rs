@@ -1,7 +1,13 @@
 use proc_macro::TokenStream;
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, parse_quote, Data, DataEnum, DeriveInput, GenericParam, Ident, Type};
+use syn::{
+    parse::{Parse, ParseStream},
+    parse_macro_input, parse_quote,
+    punctuated::Punctuated,
+    token::Comma,
+    Data, DataEnum, DeriveInput, Expr, ExprArray, GenericParam, Ident, Meta, Type,
+};
 
 enum Outcome<T> {
     #[allow(unused)]
@@ -9,12 +15,90 @@ enum Outcome<T> {
     Process(T),
 }
 
-#[derive(deluxe::ParseMetaItem, deluxe::ExtractAttributes)]
-#[deluxe(attributes(inception))]
 struct Attributes {
     #[cfg(feature = "opt-in")]
-    #[deluxe(default)]
     properties: Vec<syn::Path>,
+}
+
+#[cfg(feature = "opt-in")]
+fn parse_properties(value: Expr) -> Result<Vec<syn::Path>, syn::Error> {
+    let Expr::Array(ExprArray { elems, .. }) = value else {
+        return Err(syn::Error::new_spanned(
+            value,
+            "Expected `properties` to be an array expression.",
+        ));
+    };
+    let mut properties = Vec::new();
+    for elem in elems {
+        let Expr::Path(path_expr) = elem else {
+            return Err(syn::Error::new_spanned(
+                elem,
+                "Expected each `properties` item to be a path.",
+            ));
+        };
+        properties.push(path_expr.path);
+    }
+    Ok(properties)
+}
+
+impl Parse for Attributes {
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        let metas = Punctuated::<Meta, Comma>::parse_terminated(input)?;
+
+        #[cfg(feature = "opt-in")]
+        let mut properties = None;
+
+        for meta in metas {
+            match meta {
+                #[cfg(feature = "opt-in")]
+                Meta::NameValue(nv) if nv.path.is_ident("properties") => {
+                    if properties.is_some() {
+                        return Err(syn::Error::new_spanned(
+                            nv.path,
+                            "Duplicate `properties` setting.",
+                        ));
+                    }
+                    properties = Some(parse_properties(nv.value)?);
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "Unknown `inception` setting.",
+                    ));
+                }
+            }
+        }
+
+        Ok(Self {
+            #[cfg(feature = "opt-in")]
+            properties: properties.unwrap_or_default(),
+        })
+    }
+}
+
+fn extract_attributes(input: &mut DeriveInput) -> Result<Attributes, syn::Error> {
+    let mut attrs = input
+        .attrs
+        .iter()
+        .enumerate()
+        .filter(|(_, attr)| attr.path().is_ident("inception"));
+
+    let Some((idx, attr)) = attrs.next() else {
+        return Ok(Attributes {
+            #[cfg(feature = "opt-in")]
+            properties: Vec::new(),
+        });
+    };
+    if let Some((_, dup)) = attrs.next() {
+        return Err(syn::Error::new_spanned(
+            dup,
+            "Duplicate `#[inception(...)]` attribute.",
+        ));
+    }
+
+    let parsed = attr.parse_args::<Attributes>()?;
+    input.attrs.remove(idx);
+    Ok(parsed)
 }
 
 pub enum State {
@@ -39,13 +123,13 @@ impl State {
         let inception = inception_path();
 
         #[cfg(not(feature = "opt-in"))]
-        let Attributes { .. } = match deluxe::extract_attributes(&mut input) {
+        let Attributes { .. } = match extract_attributes(&mut input) {
             Ok(desc) => desc,
             Err(e) => return e.into_compile_error().into(),
         };
 
         #[cfg(feature = "opt-in")]
-        let Attributes { properties, .. } = match deluxe::extract_attributes(&mut input) {
+        let Attributes { properties, .. } = match extract_attributes(&mut input) {
             Ok(desc) => desc,
             Err(e) => return e.into_compile_error().into(),
         };
