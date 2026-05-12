@@ -1,6 +1,13 @@
 use proc_macro::TokenStream;
+use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, parse_quote, Data, DataEnum, DeriveInput, GenericParam, Ident, Type};
+use syn::{
+    parse::{Parse, ParseStream},
+    parse_macro_input, parse_quote,
+    punctuated::Punctuated,
+    token::Comma,
+    Data, DataEnum, DeriveInput, Expr, ExprArray, GenericParam, Ident, Meta, Type,
+};
 
 enum Outcome<T> {
     #[allow(unused)]
@@ -8,12 +15,90 @@ enum Outcome<T> {
     Process(T),
 }
 
-#[derive(deluxe::ParseMetaItem, deluxe::ExtractAttributes)]
-#[deluxe(attributes(inception))]
 struct Attributes {
     #[cfg(feature = "opt-in")]
-    #[deluxe(default)]
     properties: Vec<syn::Path>,
+}
+
+#[cfg(feature = "opt-in")]
+fn parse_properties(value: Expr) -> Result<Vec<syn::Path>, syn::Error> {
+    let Expr::Array(ExprArray { elems, .. }) = value else {
+        return Err(syn::Error::new_spanned(
+            value,
+            "Expected `properties` to be an array expression.",
+        ));
+    };
+    let mut properties = Vec::new();
+    for elem in elems {
+        let Expr::Path(path_expr) = elem else {
+            return Err(syn::Error::new_spanned(
+                elem,
+                "Expected each `properties` item to be a path.",
+            ));
+        };
+        properties.push(path_expr.path);
+    }
+    Ok(properties)
+}
+
+impl Parse for Attributes {
+    fn parse(input: ParseStream) -> Result<Self, syn::Error> {
+        let metas = Punctuated::<Meta, Comma>::parse_terminated(input)?;
+
+        #[cfg(feature = "opt-in")]
+        let mut properties = None;
+
+        for meta in metas {
+            match meta {
+                #[cfg(feature = "opt-in")]
+                Meta::NameValue(nv) if nv.path.is_ident("properties") => {
+                    if properties.is_some() {
+                        return Err(syn::Error::new_spanned(
+                            nv.path,
+                            "Duplicate `properties` setting.",
+                        ));
+                    }
+                    properties = Some(parse_properties(nv.value)?);
+                }
+                _ => {
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "Unknown `inception` setting.",
+                    ));
+                }
+            }
+        }
+
+        Ok(Self {
+            #[cfg(feature = "opt-in")]
+            properties: properties.unwrap_or_default(),
+        })
+    }
+}
+
+fn extract_attributes(input: &mut DeriveInput) -> Result<Attributes, syn::Error> {
+    let mut attrs = input
+        .attrs
+        .iter()
+        .enumerate()
+        .filter(|(_, attr)| attr.path().is_ident("inception"));
+
+    let Some((idx, attr)) = attrs.next() else {
+        return Ok(Attributes {
+            #[cfg(feature = "opt-in")]
+            properties: Vec::new(),
+        });
+    };
+    if let Some((_, dup)) = attrs.next() {
+        return Err(syn::Error::new_spanned(
+            dup,
+            "Duplicate `#[inception(...)]` attribute.",
+        ));
+    }
+
+    let parsed = attr.parse_args::<Attributes>()?;
+    input.attrs.remove(idx);
+    Ok(parsed)
 }
 
 pub enum State {
@@ -21,23 +106,42 @@ pub enum State {
     Struct(StructState),
 }
 
+fn inception_path() -> proc_macro2::TokenStream {
+    match crate_name("inception") {
+        Ok(FoundCrate::Itself) => quote! { crate },
+        Ok(FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote! { ::#ident }
+        }
+        Err(_) => quote! { ::inception },
+    }
+}
+
 impl State {
     pub fn gen(input: TokenStream) -> TokenStream {
         let mut input: DeriveInput = parse_macro_input!(input);
+        let inception = inception_path();
 
         #[cfg(not(feature = "opt-in"))]
-        let Attributes { .. } = match deluxe::extract_attributes(&mut input) {
+        let Attributes { .. } = match extract_attributes(&mut input) {
             Ok(desc) => desc,
             Err(e) => return e.into_compile_error().into(),
         };
 
         #[cfg(feature = "opt-in")]
-        let Attributes { properties, .. } = match deluxe::extract_attributes(&mut input) {
+        let Attributes { properties, .. } = match extract_attributes(&mut input) {
             Ok(desc) => desc,
             Err(e) => return e.into_compile_error().into(),
         };
 
         let mut transform_generics = input.generics.clone();
+        let impl_params = input.generics.params.iter().cloned().collect::<Vec<_>>();
+        let where_preds = input
+            .generics
+            .where_clause
+            .as_ref()
+            .map(|wc| wc.predicates.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
 
         let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
@@ -57,78 +161,59 @@ impl State {
                     .field_identifiers
                     .names()
                     .into_iter()
-                    .map(|n| proc_macro2::Literal::string(n.to_string().as_str()));
+                    .map(|n| proc_macro2::Literal::string(n.to_string().as_str()))
+                    .collect::<Vec<_>>();
                 let is_named = state.field_identifiers.is_named();
-                let ty_fields = state.field_tokens(Kind::Ty);
-                let ref_fields = state.field_tokens(Kind::Ref);
-                let mut_fields = state.field_tokens(Kind::Mut);
-                let owned_fields = state.field_tokens(Kind::Owned);
-                let fields_impl = state.field_impl(Kind::Ref);
-                let fields_mut_impl = state.field_impl(Kind::Mut);
-                let into_fields_impl = state.field_impl(Kind::Owned);
-                let from_fields_impl = state.impl_from_fields();
+                let ty_fields = state.field_tokens(&inception);
+                let fields_impl = state.field_impl(Kind::Ref, &inception);
+                let fields_mut_impl = state.field_impl(Kind::Mut, &inception);
+                let into_fields_impl = state.field_impl(Kind::Owned, &inception);
+                let from_fields_impl = state.impl_from_fields(&inception);
                 let StructState { name, .. } = state;
 
                 #[cfg(not(feature = "opt-in"))]
-                transform_generics.params.push(GenericParam::Type(
-                    parse_quote! { X: ::inception::Property },
-                ));
+                transform_generics
+                    .params
+                    .push(GenericParam::Type(parse_quote! { X: #inception::Property }));
                 #[cfg(feature = "opt-in")]
                 transform_generics.params.push(GenericParam::Type(
-                    parse_quote! { X: ::inception::Property + ::inception::OptIn< #name #ty_generics > },
+                    parse_quote! { X: #inception::Property + #inception::OptIn< #name #ty_generics > },
                 ));
                 let (transform_generics, _, _) = transform_generics.split_for_impl();
 
                 let num_fields =
                     proc_macro2::Literal::usize_unsuffixed(state.field_identifiers.size());
-                let fields_meta = if is_named {
-                    quote! {
-                        impl #impl_generics ::inception::NamedFieldsMeta for #name #ty_generics #where_clause {
-                            const FIELD_NAMES: &'static [&'static str] = &[#(#field_names),*];
-                        }
-                    }
+                let (is_named, struct_field_names) = if is_named {
+                    (quote! { #inception::True }, quote! { &[#(#field_names),*] })
                 } else {
-                    quote! {
-                        impl #impl_generics ::inception::UnnamedFieldsMeta for #name #ty_generics #where_clause {
-                            const NUM_FIELDS: usize = #num_fields;
-                        }
-                    }
-                };
-
-                let is_named = if is_named {
-                    quote! { ::inception::True }
-                } else {
-                    quote! { ::inception::False }
+                    (quote! { #inception::False }, quote! { &[] })
                 };
 
                 #[cfg(feature = "opt-in")]
                 let opts = quote! {
-                    #(
-                        impl #impl_generics ::inception::OptIn<#name #ty_generics> for #properties where #where_clause {}
-                    )*
+                    #inception::inception_opt_in_declare!(impl [#(#impl_params),*] #name #ty_generics where [#(#where_preds),*] : [#(#properties),*]);
+                    #inception::inception_opt_in_register!(impl [#(#impl_params),*] #name #ty_generics where [#(#where_preds),*] : [#(#properties),*]);
                 };
                 #[cfg(not(feature = "opt-in"))]
                 let opts = quote! {};
 
                 quote! {
                     #opts
-                    impl #impl_generics ::inception::DataType for #name #ty_generics #where_clause {
+                    impl #impl_generics #inception::DataType for #name #ty_generics #where_clause {
                         const NAME: &'static str = stringify!(#name);
-                        type Ty = ::inception::StructTy<#is_named>;
+                        type Ty = #inception::StructTy<#is_named>;
                     }
-                    impl #impl_generics ::inception::StructMeta for #name #ty_generics #where_clause {
-                            const NUM_FIELDS: usize = #num_fields;
-                            type NamedFields = #is_named;
+                    impl #impl_generics #inception::DerivedMetaAdapter for #name #ty_generics #where_clause {
+                        const NUM_FIELDS: usize = #num_fields;
+                        type NamedFields = #is_named;
+                        const STRUCT_FIELD_NAMES: &'static [&'static str] = #struct_field_names;
+                        const ENUM_VARIANT_NAMES: &'static [&'static str] = &[];
+                        const ENUM_FIELD_NAMES: &'static [&'static [&'static str]] = &[];
                     }
-                    #fields_meta
-                    impl #transform_generics ::inception::IsPrimitive<X> for #name #ty_generics #where_clause {
-                        type Is = ::inception::False;
-                    }
-                    impl #transform_generics ::inception::Inception<X, ::inception::False> for #name #ty_generics #where_clause {
+                    impl #impl_generics #inception::DerivedDataType for #name #ty_generics #where_clause {}
+                    impl #transform_generics #inception::Inception<X, #inception::False> for #name #ty_generics #where_clause {
                         #ty_fields
-                        #ref_fields
-                        #mut_fields
-                        #owned_fields
+                        #inception::inception_field_aliases!();
                         #fields_impl
                         #fields_mut_impl
                         #into_fields_impl
@@ -139,14 +224,11 @@ impl State {
             }
 
             State::Enum(state) => {
-                let ty_fields = state.field_tokens(Kind::Ty);
-                let ref_fields = state.field_tokens(Kind::Ref);
-                let mut_fields = state.field_tokens(Kind::Mut);
-                let owned_fields = state.field_tokens(Kind::Owned);
-                let fields_impl = state.field_impl(Kind::Ref);
-                let fields_mut_impl = state.field_impl(Kind::Mut);
-                let into_fields_impl = state.field_impl(Kind::Owned);
-                let from_fields_impl = state.impl_from_fields();
+                let ty_fields = state.field_tokens(&inception);
+                let fields_impl = state.field_impl(Kind::Ref, &inception);
+                let fields_mut_impl = state.field_impl(Kind::Mut, &inception);
+                let into_fields_impl = state.field_impl(Kind::Owned, &inception);
+                let from_fields_impl = state.impl_from_fields(&inception);
                 let EnumState {
                     name,
                     variant_identifiers,
@@ -158,12 +240,12 @@ impl State {
                     .collect::<Vec<_>>();
 
                 #[cfg(not(feature = "opt-in"))]
-                transform_generics.params.push(GenericParam::Type(
-                    parse_quote! { X: ::inception::Property },
-                ));
+                transform_generics
+                    .params
+                    .push(GenericParam::Type(parse_quote! { X: #inception::Property }));
                 #[cfg(feature = "opt-in")]
                 transform_generics.params.push(GenericParam::Type(
-                    parse_quote! { X: ::inception::Property + ::inception::OptIn< #name #ty_generics > },
+                    parse_quote! { X: #inception::Property + #inception::OptIn< #name #ty_generics > },
                 ));
                 let (transform_generics, _, _) = transform_generics.split_for_impl();
 
@@ -190,15 +272,15 @@ impl State {
                 let padding = variant_parens.into_iter().enumerate().map(|(i, parens)| {
                     let parens = parens.collect::<Vec<_>>();
                     let (pad, ty) = if parens.len() > 8 {
-                        (quote! { ::inception::list![#(#parens),*] }, quote! { ::inception::list_ty![#(#parens),*] })
+                        (quote! { #inception::list![#(#parens),*] }, quote! { #inception::list_ty![#(#parens),*] })
                     } else {
                         let n = format_ident!("PAD_{}", parens.len());
                         let m = format_ident!("Pad{}", parens.len());
-                        (quote! { ::inception::#n }, quote! { ::inception::#m })
+                        (quote! { #inception::#n }, quote! { #inception::#m })
                     };
                     let n = proc_macro2::Literal::usize_unsuffixed(i);
                     quote! {
-                        impl #impl_generics ::inception::VariantOffset<#n> for #name #ty_generics #where_clause {
+                        impl #impl_generics #inception::VariantOffset<#n> for #name #ty_generics #where_clause {
                             const PADDING: Self::Padding = #pad;
                             type Padding = #ty;
                         }
@@ -207,32 +289,30 @@ impl State {
 
                 #[cfg(feature = "opt-in")]
                 let opts = quote! {
-                    #(
-                        impl #impl_generics ::inception::OptIn<#name #ty_generics> for #properties where #where_clause {}
-                    )*
+                    #inception::inception_opt_in_declare!(impl [#(#impl_params),*] #name #ty_generics where [#(#where_preds),*] : [#(#properties),*]);
+                    #inception::inception_opt_in_register!(impl [#(#impl_params),*] #name #ty_generics where [#(#where_preds),*] : [#(#properties),*]);
                 };
                 #[cfg(not(feature = "opt-in"))]
                 let opts = quote! {};
 
                 quote! {
                     #opts
-                    impl #impl_generics ::inception::DataType for #name #ty_generics #where_clause {
+                    impl #impl_generics #inception::DataType for #name #ty_generics #where_clause {
                         const NAME: &'static str = stringify!(#name);
-                        type Ty = ::inception::EnumTy;
+                        type Ty = #inception::EnumTy;
                     }
-                    impl #impl_generics ::inception::EnumMeta for #name #ty_generics #where_clause {
-                        const VARIANT_NAMES: &'static [&'static str] = &[#(#variant_names),*];
-                        const FIELD_NAMES: &'static [&'static [&'static str]] = &[#(&[#(#var_field_names),*]),*];
+                    impl #impl_generics #inception::DerivedMetaAdapter for #name #ty_generics #where_clause {
+                        const NUM_FIELDS: usize = 0;
+                        type NamedFields = #inception::False;
+                        const STRUCT_FIELD_NAMES: &'static [&'static str] = &[];
+                        const ENUM_VARIANT_NAMES: &'static [&'static str] = &[#(#variant_names),*];
+                        const ENUM_FIELD_NAMES: &'static [&'static [&'static str]] = &[#(&[#(#var_field_names),*]),*];
                     }
                     #(#padding)*
-                    impl #transform_generics ::inception::IsPrimitive<X> for #name #ty_generics #where_clause {
-                        type Is = ::inception::False;
-                    }
-                    impl #transform_generics ::inception::Inception<X, ::inception::False> for #name #ty_generics #where_clause {
+                    impl #impl_generics #inception::DerivedDataType for #name #ty_generics #where_clause {}
+                    impl #transform_generics #inception::Inception<X, #inception::False> for #name #ty_generics #where_clause {
                         #ty_fields
-                        #ref_fields
-                        #mut_fields
-                        #owned_fields
+                        #inception::inception_field_aliases!();
                         #fields_impl
                         #fields_mut_impl
                         #into_fields_impl
@@ -254,14 +334,13 @@ pub struct EnumState {
 }
 
 enum Kind {
-    Ty,
     Ref,
     Mut,
     Owned,
 }
 
 impl EnumState {
-    fn field_tokens(&self, kind: Kind) -> proc_macro2::TokenStream {
+    fn field_tokens(&self, inception: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let fields = self.field_tys.iter().enumerate().map(|(i, tys)| {
             let var_idx = proc_macro2::Literal::usize_unsuffixed(i);
             let ixs = (0..tys.len()).map(proc_macro2::Literal::usize_unsuffixed);
@@ -270,27 +349,16 @@ impl EnumState {
             }
         });
 
-        match kind {
-            Kind::Ty => quote! {
-                type TyFields = ::inception::enum_field_tys![#(#fields),*];
-            },
-            Kind::Ref => quote! {
-                type RefFields<'__inception_ref> = <Self::TyFields as ::inception::Fields>::Referenced<'__inception_ref>
-                where
-                    Self: '__inception_ref;
-            },
-            Kind::Mut => quote! {
-                type MutFields<'__inception_mut> = <Self::TyFields as ::inception::Fields>::MutablyReferenced<'__inception_mut>
-                where
-                    Self: '__inception_mut;
-            },
-            Kind::Owned => quote! {
-                type OwnedFields = <Self::TyFields as ::inception::Fields>::Owned;
-            },
+        quote! {
+            type TyFields = #inception::enum_field_tys![#(#fields),*];
         }
     }
 
-    fn field_impl(&self, kind: Kind) -> proc_macro2::TokenStream {
+    fn field_impl(
+        &self,
+        kind: Kind,
+        inception: &proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
         let variants = self
             .field_tys
             .iter()
@@ -305,9 +373,6 @@ impl EnumState {
                         Identifier::Unnamed(n) => {
                             let n = format_ident!("_{n}");
                             match kind {
-                                Kind::Ty => quote! {
-                                    VarTyField::new()
-                                },
                                 Kind::Ref => quote! {
                                     VarRefField::new(#n)
                                 },
@@ -323,9 +388,6 @@ impl EnumState {
                         Identifier::Named(n) => {
                             named = true;
                             match kind {
-                                Kind::Ty => quote! {
-                                    VarTyField::new()
-                                },
                                 Kind::Ref => quote! {
                                     VarRefField::new(#n)
                                 },
@@ -359,17 +421,14 @@ impl EnumState {
                 let field_ids = field_ids.clone();
 
                 let header = match kind {
-                    Kind::Ty => {
-                        quote! { VarTyField::header() }
-                    }
                     Kind::Ref => {
-                        quote! { VarRefField::header(&inception::VariantHeader) }
+                        quote! { VarRefField::header(&#inception::VariantHeader) }
                     }
                     Kind::Mut => {
                         quote! { VarMutField::header(header) }
                     }
                     Kind::Owned => {
-                        quote! { VarOwnedField::header(::inception::VariantHeader) }
+                        quote! { VarOwnedField::header(#inception::VariantHeader) }
                     }
                 };
                 let variant_fields = std::iter::once(header)
@@ -381,15 +440,15 @@ impl EnumState {
                     quote! {
                         Self::#var {
                             #(#field_ids),*
-                        } => fields.mask(::inception::list![
+                        } => fields.mask(#inception::list![
                             #(#variant_fields),*
-                        ].pad(<Self as ::inception::VariantOffset<#i>>::PADDING)),
+                        ].pad(<Self as #inception::VariantOffset<#i>>::PADDING)),
                     }
                 } else {
                     quote! {
-                        Self::#var(#(#field_ids),*) => fields.mask(::inception::list![
+                        Self::#var(#(#field_ids),*) => fields.mask(#inception::list![
                             #(#variant_fields),*
-                        ].pad(<Self as ::inception::VariantOffset<#i>>::PADDING)),
+                        ].pad(<Self as #inception::VariantOffset<#i>>::PADDING)),
                     }
                 };
 
@@ -398,11 +457,9 @@ impl EnumState {
             .collect::<Vec<_>>();
 
         match kind {
-            Kind::Ty => quote! {},
-
             Kind::Ref => quote! {
                 fn fields(&self) -> Self::RefFields<'_> {
-                    use ::inception::{Pad, Mask, Phantom, VarRefField, list};
+                    use #inception::{Pad, Mask, Phantom, VarRefField, list};
                     let mut fields = Self::RefFields::phantom();
                     match self {
                         #(#expanded_variants)*
@@ -411,8 +468,8 @@ impl EnumState {
             },
 
             Kind::Mut => quote! {
-                fn fields_mut<'__inception_self: '__inception_out, '__inception_out>(&'__inception_self mut self, header: &'__inception_out mut ::inception::VariantHeader) -> Self::MutFields<'__inception_out> {
-                    use ::inception::{Pad, Mask, Phantom, VarMutField, list};
+                fn fields_mut<'__inception_self: '__inception_out, '__inception_out>(&'__inception_self mut self, header: &'__inception_out mut #inception::VariantHeader) -> Self::MutFields<'__inception_out> {
+                    use #inception::{Pad, Mask, Phantom, VarMutField, list};
                     let mut fields = Self::MutFields::phantom();
                     match self {
                         #(#expanded_variants)*
@@ -422,7 +479,7 @@ impl EnumState {
 
             Kind::Owned => quote! {
                 fn into_fields(self) -> Self::OwnedFields {
-                    use ::inception::{Pad, Mask, Phantom, VarOwnedField, list};
+                    use #inception::{Pad, Mask, Phantom, VarOwnedField, list};
                     let mut fields = Self::OwnedFields::phantom();
                     match self {
                         #(#expanded_variants)*
@@ -432,7 +489,7 @@ impl EnumState {
         }
     }
 
-    fn impl_from_fields(&self) -> proc_macro2::TokenStream {
+    fn impl_from_fields(&self, inception: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let (split, check): (Vec<_>, Vec<_>) = self
             .field_tys
             .iter()
@@ -460,12 +517,12 @@ impl EnumState {
 
                 let split_list = if (fields.len() + 1) < 8 {
                     let n = format_ident!("PAD_{}", fields.len() + 1);
-                    quote! { ::inception::#n }
+                    quote! { #inception::#n }
                 } else {
                     let split_parens = (0..fields.len() + 1).map(|_| quote! { () });
-                    quote! { ::inception::list![#(#split_parens),*] }
+                    quote! { #inception::list![#(#split_parens),*] }
                 };
-                quote! { <Self as ::inception::VariantOffset<#idx>>::PADDING };
+                quote! { <Self as #inception::VariantOffset<#idx>>::PADDING };
                 let destruct_parens = fields
                     .iter()
                     .rev()
@@ -503,7 +560,7 @@ impl EnumState {
 
         quote! {
             fn from_fields(fields: Self::OwnedFields) -> Self {
-                use ::inception::{SplitOff, Access, IntoTuples};
+                use #inception::{SplitOff, Access, IntoTuples};
                 #(
                     #split
                     #check
@@ -522,7 +579,7 @@ pub struct StructState {
 }
 
 impl StructState {
-    fn field_tokens(&self, kind: Kind) -> proc_macro2::TokenStream {
+    fn field_tokens(&self, inception: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let (ixs, tys): (Vec<_>, Vec<_>) = self
             .field_tys
             .iter()
@@ -530,27 +587,16 @@ impl StructState {
             .map(|(i, x)| (proc_macro2::Literal::usize_unsuffixed(i), x))
             .unzip();
 
-        match kind {
-            Kind::Ty => quote! {
-                type TyFields = ::inception::struct_field_tys![#(#ixs,#tys),*];
-            },
-            Kind::Ref => quote! {
-                type RefFields<'__inception_ref> = <Self::TyFields as ::inception::Fields>::Referenced<'__inception_ref>
-                where
-                    Self: '__inception_ref;
-            },
-            Kind::Mut => quote! {
-                type MutFields<'__inception_mut> = <Self::TyFields as ::inception::Fields>::MutablyReferenced<'__inception_mut>
-                where
-                    Self: '__inception_mut;
-            },
-            Kind::Owned => quote! {
-                type OwnedFields = <Self::TyFields as ::inception::Fields>::Owned;
-            },
+        quote! {
+            type TyFields = #inception::struct_field_tys![#(#ixs,#tys),*];
         }
     }
 
-    fn field_impl(&self, kind: Kind) -> proc_macro2::TokenStream {
+    fn field_impl(
+        &self,
+        kind: Kind,
+        inception: &proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
         let fields =
             self.field_tys
                 .iter()
@@ -559,65 +605,53 @@ impl StructState {
                     Identifier::Unnamed(n) => {
                         let idx = proc_macro2::Literal::usize_unsuffixed(*n);
                         match kind {
-                            Kind::Ty => quote! {
-                                ::inception::TyField::new()
-                            },
                             Kind::Ref => quote! {
-                                ::inception::RefField::new(&self.#idx)
+                                #inception::RefField::new(&self.#idx)
                             },
                             Kind::Mut => quote! {
-                                ::inception::MutField::new(&mut self.#idx)
+                                #inception::MutField::new(&mut self.#idx)
                             },
                             Kind::Owned => quote! {
-                                ::inception::OwnedField::new(self.#idx)
+                                #inception::OwnedField::new(self.#idx)
                             },
                         }
                     }
 
                     Identifier::Named(n) => match kind {
-                        Kind::Ty => quote! {
-                            ::inception::TyField::new()
-                        },
                         Kind::Ref => quote! {
-                            ::inception::RefField::new(&self.#n)
+                            #inception::RefField::new(&self.#n)
                         },
                         Kind::Mut => quote! {
-                            ::inception::MutField::new(&mut self.#n)
+                            #inception::MutField::new(&mut self.#n)
                         },
                         Kind::Owned => quote! {
-                            ::inception::OwnedField::new(self.#n)
+                            #inception::OwnedField::new(self.#n)
                         },
                     },
                 });
 
         match kind {
-            Kind::Ty => quote! {
-                fn ty_fields() -> Self::TyFields {
-                    ::inception::list![#(#fields),*]
-                }
-            },
-
             Kind::Ref => quote! {
                 fn fields(&self) -> Self::RefFields<'_> {
-                    ::inception::list![#(#fields),*]
+                    #inception::list![#(#fields),*]
                 }
             },
 
             Kind::Mut => quote! {
-                fn fields_mut<'__inception_self: '__inception_out, '__inception_out>(&'__inception_self mut self, header: &'__inception_out mut ::inception::VariantHeader) -> Self::MutFields<'__inception_out> {
-                    ::inception::list![#(#fields),*]
+                fn fields_mut<'__inception_self: '__inception_out, '__inception_out>(&'__inception_self mut self, header: &'__inception_out mut #inception::VariantHeader) -> Self::MutFields<'__inception_out> {
+                    #inception::list![#(#fields),*]
                 }
             },
 
             Kind::Owned => quote! {
                 fn into_fields(self) -> Self::OwnedFields {
-                    ::inception::list![#(#fields),*]
+                    #inception::list![#(#fields),*]
                 }
             },
         }
     }
 
-    fn impl_from_fields(&self) -> proc_macro2::TokenStream {
+    fn impl_from_fields(&self, inception: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let mut named = false;
         let fields = self
             .field_tys
@@ -640,7 +674,7 @@ impl StructState {
         if named {
             quote! {
                 fn from_fields(fields: Self::OwnedFields) -> Self {
-                    use ::inception::Access;
+                    use #inception::Access;
                     Self {
                         #(#fields),*
                     }
@@ -649,7 +683,7 @@ impl StructState {
         } else {
             quote! {
                 fn from_fields(fields: Self::OwnedFields) -> Self {
-                    use ::inception::Access;
+                    use #inception::Access;
                     Self(#(#fields),*)
                 }
             }

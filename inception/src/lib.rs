@@ -3,8 +3,8 @@
 pub use field::{Field, Fields};
 pub use inception_macros::{inception, primitive, Inception};
 pub use meta::{
-    DataType, EnumMeta, EnumTy, FieldsMeta, IsPrimitive, Meta, NamedFieldsMeta, StructMeta,
-    StructTy, UnnamedFieldsMeta, VariantOffset,
+    DataType, DerivedDataType, DerivedMetaAdapter, EnumMeta, EnumTy, FieldsMeta, IsPrimitive, Meta,
+    NamedFieldsMeta, StructMeta, StructTy, UnnamedFieldsMeta, VariantOffset,
 };
 pub use ty::{
     Compat, False, IntoTuples, List, Mask, Pad, Pad0, Pad1, Pad2, Pad3, Pad4, Pad5, Pad6, Pad7,
@@ -23,8 +23,105 @@ pub use field::{
 };
 pub use ty::Nothing;
 
+#[macro_export]
+macro_rules! inception_field_aliases {
+    () => {
+        type RefFields<'__inception_ref>
+            = <Self::TyFields as $crate::Fields>::Referenced<'__inception_ref>
+        where
+            Self: '__inception_ref;
+        type MutFields<'__inception_mut>
+            = <Self::TyFields as $crate::Fields>::MutablyReferenced<'__inception_mut>
+        where
+            Self: '__inception_mut;
+        type OwnedFields = <Self::TyFields as $crate::Fields>::Owned;
+    };
+}
+
 pub trait Property {}
 pub trait OptIn<T: DataType> {}
+
+#[doc(hidden)]
+pub trait DerivedOptInList: DataType {
+    type OptIns;
+}
+
+#[doc(hidden)]
+pub trait HasOptIn<P: Property, T: DataType> {}
+
+#[cfg(feature = "opt-in")]
+impl<P, T> OptIn<T> for P
+where
+    P: Property,
+    T: DataType,
+    (): HasOptIn<P, T>,
+{
+}
+
+#[cfg(not(feature = "opt-in"))]
+impl<P, T> OptIn<T> for P
+where
+    P: Property,
+    T: DataType,
+{
+}
+
+#[macro_export]
+macro_rules! inception_opt_in_declare {
+    (impl [] $ty:ty where [] : [$($prop:path),* $(,)?]) => {
+        impl $crate::DerivedOptInList for $ty {
+            type OptIns = $crate::list_ty![$($prop),*];
+        }
+    };
+    (impl [] $ty:ty where [$($where_toks:tt)*] : [$($prop:path),* $(,)?]) => {
+        impl $crate::DerivedOptInList for $ty
+        where
+            $($where_toks)*
+        {
+            type OptIns = $crate::list_ty![$($prop),*];
+        }
+    };
+    (impl [$($impl_g:tt)*] $ty:ty where [] : [$($prop:path),* $(,)?]) => {
+        impl<$($impl_g)*> $crate::DerivedOptInList for $ty {
+            type OptIns = $crate::list_ty![$($prop),*];
+        }
+    };
+    (impl [$($impl_g:tt)*] $ty:ty where [$($where_toks:tt)*] : [$($prop:path),* $(,)?]) => {
+        impl<$($impl_g)*> $crate::DerivedOptInList for $ty
+        where
+            $($where_toks)*
+        {
+            type OptIns = $crate::list_ty![$($prop),*];
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! inception_opt_in_register {
+    (impl [$($impl_g:tt)*] $ty:ty where [] : [$($prop:path),* $(,)?]) => {
+        const _: () = {
+            macro_rules! __inception_register_optin_for_type {
+                ($prop_ty:path) => {
+                    impl<$($impl_g)*> $crate::HasOptIn<$prop_ty, $ty> for () {}
+                };
+            }
+            $(__inception_register_optin_for_type!($prop);)*
+        };
+    };
+    (impl [$($impl_g:tt)*] $ty:ty where [$($where_toks:tt)*] : [$($prop:path),* $(,)?]) => {
+        const _: () = {
+            macro_rules! __inception_register_optin_for_type {
+                ($prop_ty:path) => {
+                    impl<$($impl_g)*> $crate::HasOptIn<$prop_ty, $ty> for ()
+                    where
+                        $($where_toks)*
+                    {}
+                };
+            }
+            $(__inception_register_optin_for_type!($prop);)*
+        };
+    };
+}
 
 pub trait Inception<X: Property, P: TruthValue = <Self as IsPrimitive<X>>::Is>:
     IsPrimitive<X> + DataType

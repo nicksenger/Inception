@@ -2,6 +2,9 @@ use core::marker::PhantomData;
 
 use crate::{field::VarField, False, Field, Fields, Property, True, TruthValue};
 
+#[doc(hidden)]
+pub trait DerivedDataType {}
+
 pub trait DataType {
     const NAME: &'static str;
     type Ty;
@@ -9,6 +12,15 @@ pub trait DataType {
 pub struct InternalTy;
 pub struct EnumTy;
 pub struct StructTy<N>(PhantomData<N>);
+
+#[doc(hidden)]
+pub trait DerivedMetaAdapter: DataType {
+    const NUM_FIELDS: usize;
+    type NamedFields: TruthValue;
+    const STRUCT_FIELD_NAMES: &'static [&'static str];
+    const ENUM_VARIANT_NAMES: &'static [&'static str];
+    const ENUM_FIELD_NAMES: &'static [&'static [&'static str]];
+}
 
 impl<T> DataType for T
 where
@@ -21,6 +33,14 @@ where
 pub trait EnumMeta: DataType {
     const VARIANT_NAMES: &'static [&'static str];
     const FIELD_NAMES: &'static [&'static [&'static str]];
+}
+impl<T> EnumMeta for T
+where
+    T: DerivedMetaAdapter + DataType<Ty = EnumTy>,
+{
+    const VARIANT_NAMES: &'static [&'static str] = <T as DerivedMetaAdapter>::ENUM_VARIANT_NAMES;
+    const FIELD_NAMES: &'static [&'static [&'static str]] =
+        <T as DerivedMetaAdapter>::ENUM_FIELD_NAMES;
 }
 pub trait Meta<K = <Self as DataType>::Ty>: DataType {
     fn metadata() -> Metadata;
@@ -49,6 +69,13 @@ pub trait StructMeta: DataType {
     const NUM_FIELDS: usize;
     type NamedFields: TruthValue;
 }
+impl<T> StructMeta for T
+where
+    T: DerivedMetaAdapter + DataType,
+{
+    const NUM_FIELDS: usize = <T as DerivedMetaAdapter>::NUM_FIELDS;
+    type NamedFields = <T as DerivedMetaAdapter>::NamedFields;
+}
 impl<T> Meta<StructTy<True>> for T
 where
     T: StructMeta<NamedFields = True> + NamedFieldsMeta + DataType,
@@ -75,8 +102,20 @@ where
 pub trait NamedFieldsMeta<K = <Self as DataType>::Ty>: DataType {
     const FIELD_NAMES: &'static [&'static str];
 }
+impl<T> NamedFieldsMeta for T
+where
+    T: DerivedMetaAdapter + DataType<Ty = StructTy<True>>,
+{
+    const FIELD_NAMES: &'static [&'static str] = <T as DerivedMetaAdapter>::STRUCT_FIELD_NAMES;
+}
 pub trait UnnamedFieldsMeta<K = <Self as DataType>::Ty>: DataType {
     const NUM_FIELDS: usize;
+}
+impl<T> UnnamedFieldsMeta for T
+where
+    T: DerivedMetaAdapter + DataType<Ty = StructTy<False>>,
+{
+    const NUM_FIELDS: usize = <T as DerivedMetaAdapter>::NUM_FIELDS;
 }
 
 pub trait FieldsMeta<K = <Self as DataType>::Ty>: DataType {
@@ -128,6 +167,24 @@ pub enum FieldsMetadata {
 
 pub trait IsPrimitive<X: Property> {
     type Is: TruthValue;
+}
+
+#[cfg(feature = "opt-in")]
+impl<T, X> IsPrimitive<X> for T
+where
+    X: Property + crate::OptIn<T>,
+    T: DerivedDataType + DataType + crate::DerivedOptInList,
+{
+    type Is = False;
+}
+
+#[cfg(not(feature = "opt-in"))]
+impl<T, X> IsPrimitive<X> for T
+where
+    X: Property,
+    T: DerivedDataType + DataType,
+{
+    type Is = False;
 }
 
 pub trait VariantOffset<const N: usize> {
