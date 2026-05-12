@@ -19,6 +19,7 @@ opt-in = []
 
 [dependencies]
 deluxe = { workspace = true }
+proc-macro-crate = { workspace = true }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 syn = { features = ["full"], workspace = true }
