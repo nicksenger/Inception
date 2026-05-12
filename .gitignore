@@ -2,3 +2,4 @@ target
 paper/*
 !paper/inception.tex
 !paper/inception.pdf
+.mitb-prompt-clipboard-*
