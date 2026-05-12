@@ -70,7 +70,8 @@ impl State {
                     .field_identifiers
                     .names()
                     .into_iter()
-                    .map(|n| proc_macro2::Literal::string(n.to_string().as_str()));
+                    .map(|n| proc_macro2::Literal::string(n.to_string().as_str()))
+                    .collect::<Vec<_>>();
                 let is_named = state.field_identifiers.is_named();
                 let ty_fields = state.field_tokens(&inception);
                 let fields_impl = state.field_impl(Kind::Ref, &inception);
@@ -91,24 +92,10 @@ impl State {
 
                 let num_fields =
                     proc_macro2::Literal::usize_unsuffixed(state.field_identifiers.size());
-                let fields_meta = if is_named {
-                    quote! {
-                        impl #impl_generics #inception::NamedFieldsMeta for #name #ty_generics #where_clause {
-                            const FIELD_NAMES: &'static [&'static str] = &[#(#field_names),*];
-                        }
-                    }
+                let (is_named, struct_field_names) = if is_named {
+                    (quote! { #inception::True }, quote! { &[#(#field_names),*] })
                 } else {
-                    quote! {
-                        impl #impl_generics #inception::UnnamedFieldsMeta for #name #ty_generics #where_clause {
-                            const NUM_FIELDS: usize = #num_fields;
-                        }
-                    }
-                };
-
-                let is_named = if is_named {
-                    quote! { #inception::True }
-                } else {
-                    quote! { #inception::False }
+                    (quote! { #inception::False }, quote! { &[] })
                 };
 
                 #[cfg(feature = "opt-in")]
@@ -126,11 +113,13 @@ impl State {
                         const NAME: &'static str = stringify!(#name);
                         type Ty = #inception::StructTy<#is_named>;
                     }
-                    impl #impl_generics #inception::StructMeta for #name #ty_generics #where_clause {
-                            const NUM_FIELDS: usize = #num_fields;
-                            type NamedFields = #is_named;
+                    impl #impl_generics #inception::DerivedMetaAdapter for #name #ty_generics #where_clause {
+                        const NUM_FIELDS: usize = #num_fields;
+                        type NamedFields = #is_named;
+                        const STRUCT_FIELD_NAMES: &'static [&'static str] = #struct_field_names;
+                        const ENUM_VARIANT_NAMES: &'static [&'static str] = &[];
+                        const ENUM_FIELD_NAMES: &'static [&'static [&'static str]] = &[];
                     }
-                    #fields_meta
                     impl #impl_generics #inception::DerivedDataType for #name #ty_generics #where_clause {}
                     impl #transform_generics #inception::Inception<X, #inception::False> for #name #ty_generics #where_clause {
                         #ty_fields
@@ -223,9 +212,12 @@ impl State {
                         const NAME: &'static str = stringify!(#name);
                         type Ty = #inception::EnumTy;
                     }
-                    impl #impl_generics #inception::EnumMeta for #name #ty_generics #where_clause {
-                        const VARIANT_NAMES: &'static [&'static str] = &[#(#variant_names),*];
-                        const FIELD_NAMES: &'static [&'static [&'static str]] = &[#(&[#(#var_field_names),*]),*];
+                    impl #impl_generics #inception::DerivedMetaAdapter for #name #ty_generics #where_clause {
+                        const NUM_FIELDS: usize = 0;
+                        type NamedFields = #inception::False;
+                        const STRUCT_FIELD_NAMES: &'static [&'static str] = &[];
+                        const ENUM_VARIANT_NAMES: &'static [&'static str] = &[#(#variant_names),*];
+                        const ENUM_FIELD_NAMES: &'static [&'static [&'static str]] = &[#(&[#(#var_field_names),*]),*];
                     }
                     #(#padding)*
                     impl #impl_generics #inception::DerivedDataType for #name #ty_generics #where_clause {}
