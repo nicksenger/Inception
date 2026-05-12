@@ -1,6 +1,8 @@
 use proc_macro::TokenStream;
 use proc_macro_crate::{crate_name, FoundCrate};
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, ToTokens};
+#[cfg(feature = "opt-in")]
+use std::collections::HashSet;
 use syn::{
     parse::{Parse, ParseStream},
     parse_macro_input, parse_quote,
@@ -77,28 +79,36 @@ impl Parse for Attributes {
 }
 
 fn extract_attributes(input: &mut DeriveInput) -> Result<Attributes, syn::Error> {
-    let mut attrs = input
-        .attrs
-        .iter()
-        .enumerate()
-        .filter(|(_, attr)| attr.path().is_ident("inception"));
+    let mut inception_attr_ids = Vec::new();
 
-    let Some((idx, attr)) = attrs.next() else {
-        return Ok(Attributes {
-            #[cfg(feature = "opt-in")]
-            properties: Vec::new(),
-        });
-    };
-    if let Some((_, dup)) = attrs.next() {
-        return Err(syn::Error::new_spanned(
-            dup,
-            "Duplicate `#[inception(...)]` attribute.",
-        ));
+    #[cfg(feature = "opt-in")]
+    let mut properties = Vec::new();
+    #[cfg(feature = "opt-in")]
+    let mut seen = HashSet::new();
+
+    for (idx, attr) in input.attrs.iter().enumerate() {
+        if !attr.path().is_ident("inception") {
+            continue;
+        }
+        inception_attr_ids.push(idx);
+        let parsed = attr.parse_args::<Attributes>()?;
+        #[cfg(feature = "opt-in")]
+        for property in parsed.properties {
+            let key = property.to_token_stream().to_string();
+            if seen.insert(key) {
+                properties.push(property);
+            }
+        }
     }
 
-    let parsed = attr.parse_args::<Attributes>()?;
-    input.attrs.remove(idx);
-    Ok(parsed)
+    for idx in inception_attr_ids.into_iter().rev() {
+        input.attrs.remove(idx);
+    }
+
+    Ok(Attributes {
+        #[cfg(feature = "opt-in")]
+        properties,
+    })
 }
 
 pub enum State {

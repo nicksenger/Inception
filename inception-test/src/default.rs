@@ -58,10 +58,29 @@ impl Standard for VariantHeader {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::hash::{Digest, Digestible};
     use crate::data::Movie;
+    use std::hash::Hasher;
+
+    #[derive(Inception)]
+    #[inception(properties = [Default])]
+    #[inception(properties = [Digestible, Default])]
+    struct MultiProperties {
+        n: u64,
+    }
 
     #[test]
     fn default() {
         let _s = Movie::standard();
+    }
+
+    #[test]
+    fn multiple_inception_properties_attributes() {
+        use std::hash::DefaultHasher;
+
+        let data = MultiProperties::standard();
+        let mut hasher = DefaultHasher::new();
+        data.digest(&mut hasher);
+        let _ = hasher.finish();
     }
 }
