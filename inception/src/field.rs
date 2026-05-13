@@ -467,7 +467,10 @@ pub enum VarMutField<'a, T, S, const VAR_IDX: usize, const IDX: usize> {
 impl<'a, S, const VAR_IDX: usize, const IDX: usize>
     VarMutField<'a, VariantHeader, S, VAR_IDX, IDX>
 {
-    pub fn header(header: &'a mut VariantHeader) -> Self {
+    pub fn header(_: VariantHeader) -> Self {
+        // SAFETY: `VariantHeader` is a zero-sized marker type, so constructing a
+        // mutable reference from a dangling aligned pointer does not touch memory.
+        let header = unsafe { &mut *core::ptr::NonNull::<VariantHeader>::dangling().as_ptr() };
         Self::Header(MutField::new(header))
     }
 }

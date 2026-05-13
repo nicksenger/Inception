@@ -336,19 +336,25 @@ impl<X: ::inception::Property> ::inception::Inception<X, ::inception::False> for
             ),
         }
     }
-    fn fields_mut<'a: 'b, 'b>(
+    fn fields_mut<'a>(
         &'a mut self,
-        header: &'b mut ::inception::VariantHeader,
-    ) -> Self::MutFields<'b> {
+        _header: &mut ::inception::VariantHeader,
+    ) -> Self::MutFields<'a> {
         use ::inception::{list, Mask, Pad, Phantom, VarMutField};
         let mut fields = Self::MutFields::phantom();
         match self {
             Self::Cobb(_0) => fields.mask(
-                ::inception::list![VarMutField::header(header), VarMutField::new(_0)]
+                ::inception::list![
+                    VarMutField::header(::inception::VariantHeader),
+                    VarMutField::new(_0)
+                ]
                     .pad(<Self as ::inception::VariantOffset<0>>::PADDING),
             ),
             Self::Fischer { played_by } => fields.mask(
-                ::inception::list![VarMutField::header(header), VarMutField::new(played_by)]
+                ::inception::list![
+                    VarMutField::header(::inception::VariantHeader),
+                    VarMutField::new(played_by)
+                ]
                     .pad(<Self as ::inception::VariantOffset<1>>::PADDING),
             ),
         }
@@ -411,10 +417,10 @@ impl<X: ::inception::Property> ::inception::Inception<X, ::inception::False> for
     fn fields(&self) -> Self::RefFields<'_> {
         ::inception::list![::inception::RefField::new(&self.involving)]
     }
-    fn fields_mut<'a: 'b, 'b>(
+    fn fields_mut<'a>(
         &'a mut self,
-        header: &'b mut ::inception::VariantHeader,
-    ) -> Self::MutFields<'b> {
+        _header: &mut ::inception::VariantHeader,
+    ) -> Self::MutFields<'a> {
         ::inception::list![::inception::MutField::new(&mut self.involving)]
     }
     fn into_fields(self) -> Self::OwnedFields {
@@ -732,5 +738,4 @@ Cheers,
 
 Nick
 </details>
-
 

@@ -435,7 +435,7 @@ impl EnumState {
                         quote! { VarRefField::header(&#inception::VariantHeader) }
                     }
                     Kind::Mut => {
-                        quote! { VarMutField::header(header) }
+                        quote! { VarMutField::header(#inception::VariantHeader) }
                     }
                     Kind::Owned => {
                         quote! { VarOwnedField::header(#inception::VariantHeader) }
@@ -478,7 +478,7 @@ impl EnumState {
             },
 
             Kind::Mut => quote! {
-                fn fields_mut<'__inception_self: '__inception_out, '__inception_out>(&'__inception_self mut self, header: &'__inception_out mut #inception::VariantHeader) -> Self::MutFields<'__inception_out> {
+                fn fields_mut<'__inception_self>(&'__inception_self mut self, _header: &mut #inception::VariantHeader) -> Self::MutFields<'__inception_self> {
                     use #inception::{Pad, Mask, Phantom, VarMutField, list};
                     let mut fields = Self::MutFields::phantom();
                     match self {
@@ -648,7 +648,7 @@ impl StructState {
             },
 
             Kind::Mut => quote! {
-                fn fields_mut<'__inception_self: '__inception_out, '__inception_out>(&'__inception_self mut self, header: &'__inception_out mut #inception::VariantHeader) -> Self::MutFields<'__inception_out> {
+                fn fields_mut<'__inception_self>(&'__inception_self mut self, _header: &mut #inception::VariantHeader) -> Self::MutFields<'__inception_self> {
                     #inception::list![#(#fields),*]
                 }
             },
