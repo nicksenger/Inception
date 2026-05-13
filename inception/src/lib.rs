@@ -1,7 +1,7 @@
 #![no_std]
 
 pub use field::{Field, Fields};
-pub use inception_macros::{inception, primitive, Inception};
+pub use inception_macros::{inception, inception_derive, primitive, Inception};
 pub use meta::{
     DataType, DerivedDataType, DerivedMetaAdapter, EnumMeta, EnumTy, FieldsMeta, IsPrimitive, Meta,
     NamedFieldsMeta, StructMeta, StructTy, UnnamedFieldsMeta, VariantOffset,

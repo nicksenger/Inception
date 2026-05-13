@@ -5,6 +5,7 @@ extern crate syn;
 use proc_macro::TokenStream;
 
 mod derive;
+mod derive_helper;
 mod inception;
 mod primitive;
 
@@ -16,6 +17,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn inception(attr: TokenStream, item: TokenStream) -> TokenStream {
     inception::State::gen(attr, item)
+}
+
+#[proc_macro_attribute]
+pub fn inception_derive(attr: TokenStream, item: TokenStream) -> TokenStream {
+    derive_helper::State::gen(attr, item)
 }
 
 #[proc_macro_attribute]
