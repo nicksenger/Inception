@@ -58,8 +58,8 @@ impl Standard for VariantHeader {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::hash::{Digest, Digestible};
     use crate::data::Movie;
+    use crate::hash::{Digest, Digestible};
     use std::hash::Hasher;
 
     #[derive(Inception)]

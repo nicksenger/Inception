@@ -1,24 +1,19 @@
 [package]
-name = "inception-macros"
-description = "Macros for Inception"
+name = "inception-derive-gen"
+description = "Shared derive expansion logic for Inception-compatible proc macros"
 authors = ["Nick Senger <dev@nsenger.com>"]
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/nicksenger/inception"
-categories = ["science"]
-keywords = ["science", "no_std", "metaprogramming", "types", "dinosaurs"]
 rust-version = "1.84"
 version = "0.1.0"
 
-[lib]
-proc-macro = true
-
 [features]
 default = ["opt-in"]
-opt-in = ["inception-derive-gen/opt-in"]
+opt-in = []
 
 [dependencies]
-inception-derive-gen = { workspace = true }
+proc-macro-crate = { workspace = true }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 syn = { features = ["full"], workspace = true }
