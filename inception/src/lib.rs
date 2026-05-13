@@ -139,10 +139,10 @@ pub trait Inception<X: Property, P: TruthValue = <Self as IsPrimitive<X>>::Is>:
         Self::TyFields::phantom()
     }
     fn fields(&self) -> Self::RefFields<'_>;
-    fn fields_mut<'a: 'b, 'b>(
+    fn fields_mut<'a>(
         &'a mut self,
-        variant_header: &'b mut VariantHeader,
-    ) -> Self::MutFields<'b>;
+        variant_header: &mut VariantHeader,
+    ) -> Self::MutFields<'a>;
     fn into_fields(self) -> Self::OwnedFields;
     fn from_fields(fields: Self::OwnedFields) -> Self;
 }
