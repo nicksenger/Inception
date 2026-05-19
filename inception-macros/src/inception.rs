@@ -2753,18 +2753,7 @@ impl State {
         } else {
             quote! { <T, #(#type_params),*> }
         };
-        let compat_impl = if flow_input_ident.is_some() {
-            quote! {}
-        } else {
-            quote! {
-                impl<T> ::inception::Compat<T> for super::#property_ident
-                where
-                    T: super::#trait_ident,
-                {
-                    type Out = True;
-                }
-            }
-        };
+        let compat_impl = quote! {};
         let inferred_input_ty =
             quote! { <() as #mod_ident::#fields_input_ident #fields_input_trait_use_params>::In };
         let inferred_input_inner_trait_args = if flow_input_from_assoc && !type_params.is_empty() {
@@ -3783,8 +3772,8 @@ impl State {
                     }
                 }
 
-                impl<T> IsPrimitive<super::#property_ident> for Wrap<T> {
-                    type Is = False;
+                impl<T> ::inception::Compat<Wrap<T>> for super::#property_ident {
+                    type Out = False;
                 }
                 pub trait #inductive_ident<P: TruthValue = <Self as IsPrimitive<super::#property_ident>>::Is, In = (), Out = In #internal_trait_decl_generic_defs> {
                     type Property: ::inception::Property;
@@ -4772,18 +4761,7 @@ impl State {
         };
         let blanket_impl_head =
             quote! { impl #trait_impl_generic_params #trait_ident #trait_generic_args for T };
-        let compat_impl = if type_params.is_empty() {
-            quote! {
-                impl<T> ::inception::Compat<T> for super::#property_ident
-                where
-                    T: super::#trait_ident,
-                {
-                    type Out = True;
-                }
-            }
-        } else {
-            quote! {}
-        };
+        let compat_impl = quote! {};
         let trait_supertrait_clause = if trait_supertraits.is_empty() {
             quote! {}
         } else {
@@ -5357,8 +5335,8 @@ impl State {
                     }
                 }
 
-                impl<T> IsPrimitive<super::#property_ident> for Wrap<T> {
-                    type Is = False;
+                impl<T> ::inception::Compat<Wrap<T>> for super::#property_ident {
+                    type Out = False;
                 }
 
                 #split_impl

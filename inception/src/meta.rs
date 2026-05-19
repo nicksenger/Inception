@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use crate::{field::VarField, False, Field, Fields, Property, True, TruthValue};
+use crate::{field::VarField, Compat, False, Field, Fields, Property, True, TruthValue};
 
 #[doc(hidden)]
 pub trait DerivedDataType {}
@@ -169,22 +169,11 @@ pub trait IsPrimitive<X: Property> {
     type Is: TruthValue;
 }
 
-#[cfg(feature = "opt-in")]
 impl<T, X> IsPrimitive<X> for T
 where
-    X: Property + crate::OptIn<T>,
-    T: DerivedDataType + DataType + crate::DerivedOptInList,
+    X: Property + Compat<T>,
 {
-    type Is = False;
-}
-
-#[cfg(not(feature = "opt-in"))]
-impl<T, X> IsPrimitive<X> for T
-where
-    X: Property,
-    T: DerivedDataType + DataType,
-{
-    type Is = False;
+    type Is = <X as Compat<T>>::Out;
 }
 
 pub trait VariantOffset<const N: usize> {

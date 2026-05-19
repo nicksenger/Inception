@@ -123,9 +123,7 @@ macro_rules! inception_opt_in_register {
     };
 }
 
-pub trait Inception<X: Property, P: TruthValue = <Self as IsPrimitive<X>>::Is>:
-    IsPrimitive<X> + DataType
-{
+pub trait Inception<X: Property, P: TruthValue = False>: DataType {
     type TyFields: field::Fields + field::Phantom;
     type RefFields<'a>: field::Fields
     where

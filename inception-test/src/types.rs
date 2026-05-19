@@ -253,6 +253,40 @@ where
 pub struct NoBlanketLeaf;
 impl NoBlanketPrimitive for NoBlanketLeaf {}
 
+pub trait Animal {}
+
+pub struct Cat;
+pub struct Dog;
+
+impl Animal for Cat {}
+impl Animal for Dog {}
+
+#[inception(property = BlanketTypeTree, types)]
+pub trait BlanketTypeNode {
+    #[induce(
+        base = List<()>,
+        merge = List<(Node<Head, <Head as BlanketTypeNode>::Children>, <Tail as BlanketTypeNode>::Children)>,
+        merge_variant = List<(Node<Head, <Head as BlanketTypeNode>::Children>, <Tail as BlanketTypeNode>::Children)>,
+        join = <Fields as BlanketTypeNode>::Children
+    )]
+    type Children;
+}
+
+impl<T> inception::Compat<T> for BlanketTypeTree
+where
+    T: Animal,
+{
+    type Out = inception::True;
+}
+
+impl BlanketTypeNode for Cat {
+    type Children = List<()>;
+}
+
+impl BlanketTypeNode for Dog {
+    type Children = List<()>;
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -361,5 +395,20 @@ mod test {
     #[test]
     fn no_blanket_allows_trait_bounded_primitive_impl() {
         assert_type_eq!(<NoBlanketLeaf as NoBlanketTypeNode>::Children, List<()>);
+    }
+
+    #[derive(Inception)]
+    #[inception(properties = [BlanketTypeTree])]
+    struct AnimalPack {
+        cat: Cat,
+        dog: Dog,
+    }
+
+    #[test]
+    fn blanket_compat_selects_primitives() {
+        assert_type_eq!(
+            <AnimalPack as BlanketTypeNode>::Children,
+            List<(Node<Cat, List<()>>, List<(Node<Dog, List<()>>, List<()>)>)>
+        );
     }
 }
