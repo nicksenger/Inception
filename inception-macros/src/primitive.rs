@@ -161,8 +161,8 @@ impl State {
                 quote! {
                     #input
                     const _: () = {
-                        impl #impl_generics ::inception::IsPrimitive<#property> for #self_ty #impl_where_clause {
-                            type Is = ::inception::True;
+                        impl #impl_generics ::inception::Compat<#self_ty> for #property #impl_where_clause {
+                            type Out = ::inception::True;
                         }
                     };
                 }

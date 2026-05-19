@@ -1,7 +1,6 @@
 use proc_macro2::TokenStream;
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{format_ident, quote, ToTokens};
-#[cfg(feature = "opt-in")]
 use std::collections::HashSet;
 use syn::{
     parse::{Parse, ParseStream},
@@ -18,11 +17,9 @@ enum Outcome<T> {
 }
 
 struct Attributes {
-    #[cfg(feature = "opt-in")]
     properties: Vec<syn::Path>,
 }
 
-#[cfg(feature = "opt-in")]
 fn parse_properties(value: Expr) -> Result<Vec<syn::Path>, syn::Error> {
     let Expr::Array(ExprArray { elems, .. }) = value else {
         return Err(syn::Error::new_spanned(
@@ -46,13 +43,10 @@ fn parse_properties(value: Expr) -> Result<Vec<syn::Path>, syn::Error> {
 impl Parse for Attributes {
     fn parse(input: ParseStream) -> Result<Self, syn::Error> {
         let metas = Punctuated::<Meta, Comma>::parse_terminated(input)?;
-
-        #[cfg(feature = "opt-in")]
         let mut properties = None;
 
         for meta in metas {
             match meta {
-                #[cfg(feature = "opt-in")]
                 Meta::NameValue(nv) if nv.path.is_ident("properties") => {
                     if properties.is_some() {
                         return Err(syn::Error::new_spanned(
@@ -72,7 +66,6 @@ impl Parse for Attributes {
         }
 
         Ok(Self {
-            #[cfg(feature = "opt-in")]
             properties: properties.unwrap_or_default(),
         })
     }
@@ -80,10 +73,7 @@ impl Parse for Attributes {
 
 fn extract_attributes(input: &mut DeriveInput) -> Result<Attributes, syn::Error> {
     let mut inception_attr_ids = Vec::new();
-
-    #[cfg(feature = "opt-in")]
     let mut properties = Vec::new();
-    #[cfg(feature = "opt-in")]
     let mut seen = HashSet::new();
 
     for (idx, attr) in input.attrs.iter().enumerate() {
@@ -92,7 +82,6 @@ fn extract_attributes(input: &mut DeriveInput) -> Result<Attributes, syn::Error>
         }
         inception_attr_ids.push(idx);
         let parsed = attr.parse_args::<Attributes>()?;
-        #[cfg(feature = "opt-in")]
         for property in parsed.properties {
             let key = property.to_token_stream().to_string();
             if seen.insert(key) {
@@ -105,10 +94,7 @@ fn extract_attributes(input: &mut DeriveInput) -> Result<Attributes, syn::Error>
         input.attrs.remove(idx);
     }
 
-    Ok(Attributes {
-        #[cfg(feature = "opt-in")]
-        properties,
-    })
+    Ok(Attributes { properties })
 }
 
 pub enum State {
@@ -135,13 +121,6 @@ impl State {
         };
         let inception = inception_path();
 
-        #[cfg(not(feature = "opt-in"))]
-        let Attributes { .. } = match extract_attributes(&mut input) {
-            Ok(desc) => desc,
-            Err(e) => return e.into_compile_error().into(),
-        };
-
-        #[cfg(feature = "opt-in")]
         let Attributes { properties, .. } = match extract_attributes(&mut input) {
             Ok(desc) => desc,
             Err(e) => return e.into_compile_error().into(),
@@ -209,6 +188,13 @@ impl State {
                 };
                 #[cfg(not(feature = "opt-in"))]
                 let opts = quote! {};
+                let compat_impls = quote! {
+                    #(
+                        impl #impl_generics #inception::Compat<#name #ty_generics> for #properties #where_clause {
+                            type Out = #inception::False;
+                        }
+                    )*
+                };
 
                 quote! {
                     #opts
@@ -224,6 +210,7 @@ impl State {
                         const ENUM_FIELD_NAMES: &'static [&'static [&'static str]] = &[];
                     }
                     impl #impl_generics #inception::DerivedDataType for #name #ty_generics #where_clause {}
+                    #compat_impls
                     impl #transform_generics #inception::Inception<X, #inception::False> for #name #ty_generics #where_clause {
                         #ty_fields
                         #inception::inception_field_aliases!();
@@ -307,6 +294,13 @@ impl State {
                 };
                 #[cfg(not(feature = "opt-in"))]
                 let opts = quote! {};
+                let compat_impls = quote! {
+                    #(
+                        impl #impl_generics #inception::Compat<#name #ty_generics> for #properties #where_clause {
+                            type Out = #inception::False;
+                        }
+                    )*
+                };
 
                 quote! {
                     #opts
@@ -323,6 +317,7 @@ impl State {
                     }
                     #(#padding)*
                     impl #impl_generics #inception::DerivedDataType for #name #ty_generics #where_clause {}
+                    #compat_impls
                     impl #transform_generics #inception::Inception<X, #inception::False> for #name #ty_generics #where_clause {
                         #ty_fields
                         #inception::inception_field_aliases!();
