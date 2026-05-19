@@ -278,8 +278,6 @@ impl inception::Property for DomainPartitionedPrimitive {}
 
 pub struct AnimalPrimitiveDomain;
 pub struct EffectPrimitiveDomain;
-pub trait AnimalPrimitiveMarker {}
-impl AnimalPrimitiveMarker for AnimalOnly {}
 
 impl<T> inception::Compat<T, AnimalPrimitiveDomain> for DomainPartitionedPrimitive
 where
@@ -294,13 +292,6 @@ where
 {
     type Out = inception::True;
 }
-
-inception::inception_primitive_domain_bridge!(
-    impl [T] DomainPartitionedPrimitive => T, AnimalPrimitiveDomain where [T: AnimalPrimitiveMarker,]
-);
-inception::inception_primitive_domain_bridge!(
-    impl [T] DomainPartitionedPrimitive => T, EffectPrimitiveDomain where [T: EffectSchema,]
-);
 
 #[inception(property = BlanketTypeTree, types)]
 pub trait BlanketTypeNode {
@@ -456,15 +447,19 @@ mod test {
     #[test]
     fn domain_partitioned_blanket_primitives_supported() {
         assert_type_eq!(
-            <AnimalOnly as inception::IsPrimitive<DomainPartitionedPrimitive>>::Is,
+            <DomainPartitionedPrimitive as inception::Compat<AnimalOnly, AnimalPrimitiveDomain>>::Out,
             inception::True
         );
         assert_type_eq!(
-            <EffectOnly as inception::IsPrimitive<DomainPartitionedPrimitive>>::Is,
+            <DomainPartitionedPrimitive as inception::Compat<EffectOnly, EffectPrimitiveDomain>>::Out,
             inception::True
         );
         assert_type_eq!(
-            <Hybrid as inception::IsPrimitive<DomainPartitionedPrimitive>>::Is,
+            <DomainPartitionedPrimitive as inception::Compat<Hybrid, AnimalPrimitiveDomain>>::Out,
+            inception::True
+        );
+        assert_type_eq!(
+            <DomainPartitionedPrimitive as inception::Compat<Hybrid, EffectPrimitiveDomain>>::Out,
             inception::True
         );
     }

@@ -123,27 +123,6 @@ macro_rules! inception_opt_in_register {
     };
 }
 
-#[macro_export]
-macro_rules! inception_primitive_domain_bridge {
-    (impl [$($impl_g:tt)*] $property:path => $ty:ty, $domain:ty where []) => {
-        impl<$($impl_g)*> ::inception::Compat<$ty> for $property
-        where
-            $property: ::inception::Compat<$ty, $domain>,
-        {
-            type Out = <$property as ::inception::Compat<$ty, $domain>>::Out;
-        }
-    };
-    (impl [$($impl_g:tt)*] $property:path => $ty:ty, $domain:ty where [$($where_toks:tt)*]) => {
-        impl<$($impl_g)*> ::inception::Compat<$ty> for $property
-        where
-            $($where_toks)*
-            $property: ::inception::Compat<$ty, $domain>,
-        {
-            type Out = <$property as ::inception::Compat<$ty, $domain>>::Out;
-        }
-    };
-}
-
 pub trait Inception<X: Property, P: TruthValue = False>: DataType {
     type TyFields: field::Fields + field::Phantom;
     type RefFields<'a>: field::Fields
