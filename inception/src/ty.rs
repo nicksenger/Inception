@@ -104,7 +104,9 @@ const _: () = {
     interleave![[A, C, E, G, I, K, M, O, Q : S], [B, D, F, H, J, L, N, P, R : T] => [a, c, e, g, i, k, m, o, q: s], [b, d, f, h, j, l,n,p,r:t]];
 };
 
-pub trait Compat<T> {
+pub struct DefaultCompatDomain;
+
+pub trait Compat<T, D = DefaultCompatDomain> {
     type Out: TruthValue;
 }
 
@@ -114,6 +116,7 @@ pub trait TruthValue {}
 impl TruthValue for True {}
 impl TruthValue for False {}
 
+
 pub type Nothing = List<()>;
 pub struct List<T>(pub T);
 impl<T, U> List<(T, U)> {
@@ -121,6 +124,7 @@ impl<T, U> List<(T, U)> {
         (self.0 .0, self.0 .1)
     }
 }
+
 
 pub trait IntoTuples {
     type Left;

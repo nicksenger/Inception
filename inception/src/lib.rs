@@ -7,9 +7,9 @@ pub use meta::{
     NamedFieldsMeta, StructMeta, StructTy, UnnamedFieldsMeta, VariantOffset,
 };
 pub use ty::{
-    Compat, False, IntoTuples, List, Mask, Pad, Pad0, Pad1, Pad2, Pad3, Pad4, Pad5, Pad6, Pad7,
-    Pad8, SplitOff, SplitOffInfix, True, TruthValue, PAD_0, PAD_1, PAD_2, PAD_3, PAD_4, PAD_5,
-    PAD_6, PAD_7, PAD_8,
+    Compat, DefaultCompatDomain, False, IntoTuples, List, Mask, Pad, Pad0, Pad1, Pad2, Pad3,
+    Pad4, Pad5, Pad6, Pad7, Pad8, SplitOff, SplitOffInfix, True, TruthValue, PAD_0, PAD_1,
+    PAD_2, PAD_3, PAD_4, PAD_5, PAD_6, PAD_7, PAD_8,
 };
 
 pub mod field;
@@ -120,6 +120,27 @@ macro_rules! inception_opt_in_register {
             }
             $(__inception_register_optin_for_type!($prop);)*
         };
+    };
+}
+
+#[macro_export]
+macro_rules! inception_primitive_domain_bridge {
+    (impl [$($impl_g:tt)*] $property:path => $ty:ty, $domain:ty where []) => {
+        impl<$($impl_g)*> ::inception::Compat<$ty> for $property
+        where
+            $property: ::inception::Compat<$ty, $domain>,
+        {
+            type Out = <$property as ::inception::Compat<$ty, $domain>>::Out;
+        }
+    };
+    (impl [$($impl_g:tt)*] $property:path => $ty:ty, $domain:ty where [$($where_toks:tt)*]) => {
+        impl<$($impl_g)*> ::inception::Compat<$ty> for $property
+        where
+            $($where_toks)*
+            $property: ::inception::Compat<$ty, $domain>,
+        {
+            type Out = <$property as ::inception::Compat<$ty, $domain>>::Out;
+        }
     };
 }
 

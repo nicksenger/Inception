@@ -261,6 +261,47 @@ pub struct Dog;
 impl Animal for Cat {}
 impl Animal for Dog {}
 
+pub trait EffectSchema {}
+
+pub struct Hybrid;
+impl Animal for Hybrid {}
+impl EffectSchema for Hybrid {}
+
+pub struct AnimalOnly;
+impl Animal for AnimalOnly {}
+
+pub struct EffectOnly;
+impl EffectSchema for EffectOnly {}
+
+pub struct DomainPartitionedPrimitive;
+impl inception::Property for DomainPartitionedPrimitive {}
+
+pub struct AnimalPrimitiveDomain;
+pub struct EffectPrimitiveDomain;
+pub trait AnimalPrimitiveMarker {}
+impl AnimalPrimitiveMarker for AnimalOnly {}
+
+impl<T> inception::Compat<T, AnimalPrimitiveDomain> for DomainPartitionedPrimitive
+where
+    T: Animal,
+{
+    type Out = inception::True;
+}
+
+impl<T> inception::Compat<T, EffectPrimitiveDomain> for DomainPartitionedPrimitive
+where
+    T: EffectSchema,
+{
+    type Out = inception::True;
+}
+
+inception::inception_primitive_domain_bridge!(
+    impl [T] DomainPartitionedPrimitive => T, AnimalPrimitiveDomain where [T: AnimalPrimitiveMarker,]
+);
+inception::inception_primitive_domain_bridge!(
+    impl [T] DomainPartitionedPrimitive => T, EffectPrimitiveDomain where [T: EffectSchema,]
+);
+
 #[inception(property = BlanketTypeTree, types)]
 pub trait BlanketTypeNode {
     #[induce(
@@ -409,6 +450,22 @@ mod test {
         assert_type_eq!(
             <AnimalPack as BlanketTypeNode>::Children,
             List<(Node<Cat, List<()>>, List<(Node<Dog, List<()>>, List<()>)>)>
+        );
+    }
+
+    #[test]
+    fn domain_partitioned_blanket_primitives_supported() {
+        assert_type_eq!(
+            <AnimalOnly as inception::IsPrimitive<DomainPartitionedPrimitive>>::Is,
+            inception::True
+        );
+        assert_type_eq!(
+            <EffectOnly as inception::IsPrimitive<DomainPartitionedPrimitive>>::Is,
+            inception::True
+        );
+        assert_type_eq!(
+            <Hybrid as inception::IsPrimitive<DomainPartitionedPrimitive>>::Is,
+            inception::True
         );
     }
 }
