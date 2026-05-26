@@ -7,9 +7,9 @@ pub use meta::{
     NamedFieldsMeta, StructMeta, StructTy, UnnamedFieldsMeta, VariantOffset,
 };
 pub use ty::{
-    Compat, DefaultCompatDomain, False, IntoTuples, List, Mask, Pad, Pad0, Pad1, Pad2, Pad3,
-    Pad4, Pad5, Pad6, Pad7, Pad8, SplitOff, SplitOffInfix, True, TruthValue, PAD_0, PAD_1,
-    PAD_2, PAD_3, PAD_4, PAD_5, PAD_6, PAD_7, PAD_8,
+    Compat, DefaultCompatDomain, False, IntoTuples, List, Mask, Pad, Pad0, Pad1, Pad2, Pad3, Pad4,
+    Pad5, Pad6, Pad7, Pad8, SplitOff, SplitOffInfix, True, TruthValue, PAD_0, PAD_1, PAD_2, PAD_3,
+    PAD_4, PAD_5, PAD_6, PAD_7, PAD_8,
 };
 
 pub mod field;

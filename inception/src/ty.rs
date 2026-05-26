@@ -116,7 +116,6 @@ pub trait TruthValue {}
 impl TruthValue for True {}
 impl TruthValue for False {}
 
-
 pub type Nothing = List<()>;
 pub struct List<T>(pub T);
 impl<T, U> List<(T, U)> {
@@ -124,7 +123,6 @@ impl<T, U> List<(T, U)> {
         (self.0 .0, self.0 .1)
     }
 }
-
 
 pub trait IntoTuples {
     type Left;
