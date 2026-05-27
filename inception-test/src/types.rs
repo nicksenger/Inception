@@ -185,6 +185,23 @@ impl BehaviorlessTypeNode for VariantHeader {
 }
 
 pub trait MyBound {}
+
+#[inception(property = BoundInducedTypeTree)]
+pub trait BoundInducedTypeNode {
+    #[induce(
+        base = List<()>,
+        merge = List<(Node<Head, <Head as BoundInducedTypeNode>::Children>, <Tail as BoundInducedTypeNode>::Children)> where { Head: MyBound },
+        merge_variant = List<(Node<Head, <Head as BoundInducedTypeNode>::Children>, <Tail as BoundInducedTypeNode>::Children)> where { Head: MyBound },
+        join = <Fields as BoundInducedTypeNode>::Children
+    )]
+    type Children;
+
+    fn noop() -> ();
+    fn nothing() -> () {}
+    fn merge<H: BoundInducedTypeNode, R: BoundInducedTypeNode>(_l: L, _r: R) -> () {}
+    fn merge_variant_field<H: BoundInducedTypeNode, R: BoundInducedTypeNode>(_l: L, _r: R) -> () {}
+    fn join<F: BoundInducedTypeNode>(_fields: F) -> () {}
+}
 #[inception(property = BoundTypeTree, types)]
 pub trait BoundTypeNode {
     #[induce(
@@ -222,6 +239,27 @@ where
     H: MyBound,
     F: MyBound,
 {
+}
+
+#[primitive(property = BoundInducedTypeTree)]
+impl BoundInducedTypeNode for u8 {
+    type Children = List<()>;
+    fn noop() {}
+}
+#[primitive(property = BoundInducedTypeTree)]
+impl BoundInducedTypeNode for String {
+    type Children = List<()>;
+    fn noop() {}
+}
+#[primitive(property = BoundInducedTypeTree)]
+impl BoundInducedTypeNode for bool {
+    type Children = List<()>;
+    fn noop() {}
+}
+#[primitive(property = BoundInducedTypeTree)]
+impl BoundInducedTypeNode for VariantHeader {
+    type Children = List<()>;
+    fn noop() {}
 }
 impl<H, S, const VAR_IDX: usize, const IDX: usize, F> MyBound
     for List<(VarTyField<H, S, VAR_IDX, IDX>, F)>
@@ -417,6 +455,25 @@ mod test {
     fn induced_behaviorless_types() {
         assert_type_eq!(
             <MyBehaviorlessTypeTree as BehaviorlessTypeNode>::Children,
+            List<(
+                Node<String, List<()>>,
+                List<(Node<bool, List<()>>, List<(Node<u8, List<()>>, List<()>)>)>
+            )>
+        );
+    }
+
+    #[derive(Inception)]
+    #[inception(properties = [BoundInducedTypeTree])]
+    struct MyBoundInducedTypeTree {
+        foo: String,
+        bar: bool,
+        baz: u8,
+    }
+
+    #[test]
+    fn induced_non_types_where_bounds() {
+        assert_type_eq!(
+            <MyBoundInducedTypeTree as BoundInducedTypeNode>::Children,
             List<(
                 Node<String, List<()>>,
                 List<(Node<bool, List<()>>, List<(Node<u8, List<()>>, List<()>)>)>

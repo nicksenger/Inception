@@ -49,15 +49,6 @@ struct InduceSpec {
     join: InducePhaseSpec,
 }
 
-impl InduceSpec {
-    fn has_where_bounds(&self) -> bool {
-        !self.base.where_preds.is_empty()
-            || !self.merge.where_preds.is_empty()
-            || !self.merge_variant.where_preds.is_empty()
-            || !self.join.where_preds.is_empty()
-    }
-}
-
 #[derive(Clone)]
 struct AssocTypeSpec {
     item: TraitItemType,
@@ -1896,16 +1887,6 @@ impl State {
                 .into_compile_error()
                 .into();
         }
-        if assoc_types
-            .iter()
-            .filter_map(|t| t.induce.as_ref())
-            .any(InduceSpec::has_where_bounds)
-        {
-            let msg = "Per-phase `where { ... }` bounds in `#[induce(...)]` are currently supported only for `#[inception(..., types)]` traits.";
-            return syn::Error::new_spanned(trait_ident.clone(), msg)
-                .into_compile_error()
-                .into();
-        }
         let Some(Nothing {
             nothing_body,
             nothing_ret,
@@ -2465,6 +2446,273 @@ impl State {
                 Type::Group(g) => replace_type_ident(g.elem.as_mut(), target, replacement),
                 _ => {}
             }
+        }
+        fn replace_type_ident_in_path_args(
+            args: &mut syn::PathArguments,
+            target: &Ident,
+            replacement: &Type,
+        ) {
+            match args {
+                syn::PathArguments::AngleBracketed(ab) => {
+                    for arg in ab.args.iter_mut() {
+                        match arg {
+                            syn::GenericArgument::Type(inner) => {
+                                replace_type_ident(inner, target, replacement)
+                            }
+                            syn::GenericArgument::AssocType(assoc) => {
+                                replace_type_ident(&mut assoc.ty, target, replacement)
+                            }
+                            syn::GenericArgument::Constraint(constraint) => {
+                                for b in constraint.bounds.iter_mut() {
+                                    if let TypeParamBound::Trait(tb) = b {
+                                        for seg in tb.path.segments.iter_mut() {
+                                            replace_type_ident_in_path_args(
+                                                &mut seg.arguments,
+                                                target,
+                                                replacement,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                syn::PathArguments::Parenthesized(pb) => {
+                    for input in pb.inputs.iter_mut() {
+                        replace_type_ident(input, target, replacement);
+                    }
+                    if let ReturnType::Type(_, out) = &mut pb.output {
+                        replace_type_ident(out.as_mut(), target, replacement);
+                    }
+                }
+                syn::PathArguments::None => {}
+            }
+        }
+        fn substitute_where_preds(
+            preds: &[WherePredicate],
+            replacements: &[(&Ident, &Type)],
+        ) -> Vec<WherePredicate> {
+            let mut out = preds.to_vec();
+            for pred in out.iter_mut() {
+                if let WherePredicate::Type(tp) = pred {
+                    for (target, replacement) in replacements.iter() {
+                        replace_type_ident(&mut tp.bounded_ty, target, replacement);
+                        for b in tp.bounds.iter_mut() {
+                            if let TypeParamBound::Trait(tb) = b {
+                                for seg in tb.path.segments.iter_mut() {
+                                    replace_type_ident_in_path_args(
+                                        &mut seg.arguments,
+                                        target,
+                                        replacement,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            out
+        }
+        fn type_is_plain_ident(ty: &Type, ident: &Ident) -> bool {
+            matches!(
+                ty,
+                Type::Path(TypePath { qself: None, path }) if path.is_ident(ident)
+            )
+        }
+        fn remove_self_trait_bounds(
+            bounds: &mut Punctuated<TypeParamBound, syn::token::Plus>,
+            trait_ident: &Ident,
+        ) {
+            let mut kept = Punctuated::new();
+            for bound in bounds.clone().into_iter() {
+                let is_self_trait = matches!(
+                    &bound,
+                    TypeParamBound::Trait(TraitBound { path, .. })
+                        if path
+                            .segments
+                            .last()
+                            .map(|s| s.ident == *trait_ident)
+                            .unwrap_or(false)
+                );
+                if !is_self_trait {
+                    kept.push(bound);
+                }
+            }
+            *bounds = kept;
+        }
+        fn type_contains_helper_ret_projection(ty: &Type, helper_ident: &Ident) -> bool {
+            match ty {
+                Type::Path(TypePath { qself, path }) => {
+                    if let Some(q) = qself {
+                        if type_contains_helper_ret_projection(q.ty.as_ref(), helper_ident) {
+                            return true;
+                        }
+                    }
+                    if path.segments.len() >= 2 {
+                        let assoc_seg = path.segments.last().map(|s| s.ident.clone());
+                        let helper_seg = path.segments.iter().rev().nth(1).map(|s| s.ident.clone());
+                        if let (Some(assoc_seg), Some(helper_seg)) = (assoc_seg, helper_seg) {
+                            if helper_seg == *helper_ident && assoc_seg == "Ret" {
+                                return true;
+                            }
+                        }
+                    }
+                    for seg in path.segments.iter() {
+                        match &seg.arguments {
+                            syn::PathArguments::AngleBracketed(args) => {
+                                for arg in args.args.iter() {
+                                    match arg {
+                                        syn::GenericArgument::Type(inner) => {
+                                            if type_contains_helper_ret_projection(
+                                                inner,
+                                                helper_ident,
+                                            ) {
+                                                return true;
+                                            }
+                                        }
+                                        syn::GenericArgument::AssocType(assoc) => {
+                                            if type_contains_helper_ret_projection(
+                                                &assoc.ty,
+                                                helper_ident,
+                                            ) {
+                                                return true;
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            syn::PathArguments::Parenthesized(args) => {
+                                for input in args.inputs.iter() {
+                                    if type_contains_helper_ret_projection(input, helper_ident) {
+                                        return true;
+                                    }
+                                }
+                                if let ReturnType::Type(_, out) = &args.output {
+                                    if type_contains_helper_ret_projection(
+                                        out.as_ref(),
+                                        helper_ident,
+                                    ) {
+                                        return true;
+                                    }
+                                }
+                            }
+                            syn::PathArguments::None => {}
+                        }
+                    }
+                    false
+                }
+                Type::Reference(r) => {
+                    type_contains_helper_ret_projection(r.elem.as_ref(), helper_ident)
+                }
+                Type::Ptr(p) => type_contains_helper_ret_projection(p.elem.as_ref(), helper_ident),
+                Type::Slice(s) => {
+                    type_contains_helper_ret_projection(s.elem.as_ref(), helper_ident)
+                }
+                Type::Array(a) => {
+                    type_contains_helper_ret_projection(a.elem.as_ref(), helper_ident)
+                }
+                Type::Tuple(t) => t
+                    .elems
+                    .iter()
+                    .any(|elem| type_contains_helper_ret_projection(elem, helper_ident)),
+                Type::Paren(p) => {
+                    type_contains_helper_ret_projection(p.elem.as_ref(), helper_ident)
+                }
+                Type::Group(g) => {
+                    type_contains_helper_ret_projection(g.elem.as_ref(), helper_ident)
+                }
+                _ => false,
+            }
+        }
+        fn lower_helper_projection_pred(
+            pred: &WherePredicate,
+            helper_ident: &Ident,
+        ) -> WherePredicate {
+            let WherePredicate::Type(tp) = pred else {
+                return pred.clone();
+            };
+            let Type::Path(TypePath { qself, path }) = &tp.bounded_ty else {
+                return pred.clone();
+            };
+            let Some(qself) = qself else {
+                return pred.clone();
+            };
+            if path.segments.len() < 2 {
+                return pred.clone();
+            }
+            let Some(assoc_seg) = path.segments.last() else {
+                return pred.clone();
+            };
+            let Some(helper_seg) = path.segments.iter().rev().nth(1) else {
+                return pred.clone();
+            };
+            if helper_seg.ident != *helper_ident || assoc_seg.ident != "Ret" {
+                return pred.clone();
+            }
+            let constraint_generics = match &assoc_seg.arguments {
+                syn::PathArguments::AngleBracketed(ab) => Some(ab.clone()),
+                syn::PathArguments::None => None,
+                syn::PathArguments::Parenthesized(_) => {
+                    return pred.clone();
+                }
+            };
+            let constraint = syn::Constraint {
+                ident: assoc_seg.ident.clone(),
+                generics: constraint_generics,
+                colon_token: Default::default(),
+                bounds: tp.bounds.clone(),
+            };
+            let mut helper_path = path.clone();
+            helper_path.segments.pop();
+            helper_path.segments.pop_punct();
+            let Some(last_seg) = helper_path.segments.last_mut() else {
+                return pred.clone();
+            };
+            match &mut last_seg.arguments {
+                syn::PathArguments::AngleBracketed(ab) => {
+                    ab.args.push(syn::GenericArgument::Constraint(constraint));
+                }
+                syn::PathArguments::None => {
+                    let mut args = Punctuated::new();
+                    args.push(syn::GenericArgument::Constraint(constraint));
+                    last_seg.arguments =
+                        syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments {
+                            colon2_token: None,
+                            lt_token: Default::default(),
+                            args,
+                            gt_token: Default::default(),
+                        });
+                }
+                syn::PathArguments::Parenthesized(_) => {
+                    return pred.clone();
+                }
+            }
+            let self_ty = qself.ty.as_ref().clone();
+            let mut bounds = Punctuated::new();
+            bounds.push(TypeParamBound::Trait(TraitBound {
+                paren_token: None,
+                modifier: syn::TraitBoundModifier::None,
+                lifetimes: None,
+                path: helper_path,
+            }));
+            WherePredicate::Type(syn::PredicateType {
+                lifetimes: tp.lifetimes.clone(),
+                bounded_ty: self_ty,
+                colon_token: tp.colon_token,
+                bounds,
+            })
+        }
+        fn lower_helper_projection_preds(
+            preds: Vec<WherePredicate>,
+            helper_ident: &Ident,
+        ) -> Vec<WherePredicate> {
+            preds
+                .iter()
+                .map(|pred| lower_helper_projection_pred(pred, helper_ident))
+                .collect::<Vec<_>>()
         }
         let substitute_ret_ident =
             |ret: &proc_macro2::TokenStream,
@@ -3694,6 +3942,195 @@ impl State {
                 join_ty = substitute_ret_ident(&join_ty, &induce_fields_placeholder, &fields_assoc_ty);
                 join_ty = substitute_ret_ident(&join_ty, &induce_in_placeholder, &quote! { In });
                 join_ty = substitute_ret_ident(&join_ty, &induce_out_placeholder, &out_placeholder_ty);
+                let Ok(merge_head_ty) = syn::parse2::<Type>(quote! { #merge_head_ident }) else {
+                    return Some(
+                        syn::Error::new_spanned(
+                            assoc_ident,
+                            "Failed to parse induced merge head bound type.",
+                        )
+                        .into_compile_error(),
+                    );
+                };
+                let Ok(merge_var_head_ty) =
+                    syn::parse2::<Type>(quote! { #merge_var_head_ident })
+                else {
+                    return Some(
+                        syn::Error::new_spanned(
+                            assoc_ident,
+                            "Failed to parse induced merge-variant head bound type.",
+                        )
+                        .into_compile_error(),
+                    );
+                };
+                let Ok(tail_assoc_bound_ty) = syn::parse2::<Type>(tail_assoc_ty.clone()) else {
+                    return Some(
+                        syn::Error::new_spanned(
+                            assoc_ident,
+                            "Failed to parse induced merge tail bound type.",
+                        )
+                        .into_compile_error(),
+                    );
+                };
+                let Ok(merge_var_tail_assoc_bound_ty) =
+                    syn::parse2::<Type>(merge_var_tail_assoc_ty.clone())
+                else {
+                    return Some(
+                        syn::Error::new_spanned(
+                            assoc_ident,
+                            "Failed to parse induced merge-variant tail bound type.",
+                        )
+                        .into_compile_error(),
+                    );
+                };
+                let Ok(in_bound_ty) = syn::parse2::<Type>(quote! { In }) else {
+                    return Some(
+                        syn::Error::new_spanned(
+                            assoc_ident,
+                            "Failed to parse induced input bound type.",
+                        )
+                        .into_compile_error(),
+                    );
+                };
+                let Ok(out_bound_ty) = syn::parse2::<Type>(out_placeholder_ty.clone()) else {
+                    return Some(
+                        syn::Error::new_spanned(
+                            assoc_ident,
+                            "Failed to parse induced output bound type.",
+                        )
+                        .into_compile_error(),
+                    );
+                };
+                let Ok(join_fields_bound_ty) =
+                    syn::parse2::<Type>(quote! { <T as Inception<#property>>::#fields_ident #bracketlife2 })
+                else {
+                    return Some(
+                        syn::Error::new_spanned(
+                            assoc_ident,
+                            "Failed to parse induced join fields type.",
+                        )
+                        .into_compile_error(),
+                    );
+                };
+                let base_extra_where_preds = substitute_where_preds(
+                    &induce.base.where_preds,
+                    &[
+                        (&induce_in_placeholder, &in_bound_ty),
+                        (&induce_out_placeholder, &out_bound_ty),
+                    ],
+                );
+                let mut merge_where_preds_src = induce.merge.where_preds.clone();
+                for pred in merge_where_preds_src.iter_mut() {
+                    if let WherePredicate::Type(tp) = pred {
+                        rewrite_assoc_projection_to_helper(
+                            &mut tp.bounded_ty,
+                            &trait_ident,
+                            assoc_ident,
+                            &induce_head_placeholder,
+                            &helper_ident,
+                            &merge_head_self_ty,
+                            &helper_head_trait_args,
+                        );
+                        rewrite_assoc_projection_to_helper(
+                            &mut tp.bounded_ty,
+                            &trait_ident,
+                            assoc_ident,
+                            &induce_tail_placeholder,
+                            &helper_ident,
+                            &merge_tail_self_ty,
+                            &helper_false_trait_args,
+                        );
+                    }
+                }
+                let mut merge_variant_where_preds_src = induce.merge_variant.where_preds.clone();
+                for pred in merge_variant_where_preds_src.iter_mut() {
+                    if let WherePredicate::Type(tp) = pred {
+                        rewrite_assoc_projection_to_helper(
+                            &mut tp.bounded_ty,
+                            &trait_ident,
+                            assoc_ident,
+                            &induce_head_placeholder,
+                            &helper_ident,
+                            &merge_var_head_self_ty,
+                            &helper_merge_var_head_trait_args,
+                        );
+                        rewrite_assoc_projection_to_helper(
+                            &mut tp.bounded_ty,
+                            &trait_ident,
+                            assoc_ident,
+                            &induce_tail_placeholder,
+                            &helper_ident,
+                            &merge_var_tail_self_ty,
+                            &helper_false_trait_args,
+                        );
+                    }
+                }
+                let mut join_where_preds_src = induce.join.where_preds.clone();
+                for pred in join_where_preds_src.iter_mut() {
+                    if let WherePredicate::Type(tp) = pred {
+                        rewrite_assoc_projection_to_helper(
+                            &mut tp.bounded_ty,
+                            &trait_ident,
+                            assoc_ident,
+                            &induce_fields_placeholder,
+                            &helper_ident,
+                            &join_fields_self_ty,
+                            &helper_false_trait_args,
+                        );
+                        if type_is_plain_ident(&tp.bounded_ty, &induce_fields_placeholder) {
+                            remove_self_trait_bounds(&mut tp.bounds, &trait_ident);
+                        }
+                    }
+                }
+                join_where_preds_src.retain(|pred| match pred {
+                    WherePredicate::Type(tp) => !tp.bounds.is_empty(),
+                    _ => true,
+                });
+                let base_extra_where_clause = if base_extra_where_preds.is_empty() {
+                    quote! {}
+                } else {
+                    quote! { where #(#base_extra_where_preds,)* }
+                };
+                let merge_extra_where_preds = substitute_where_preds(
+                    &merge_where_preds_src,
+                    &[
+                        (&induce_head_placeholder, &merge_head_ty),
+                        (&induce_tail_placeholder, &tail_assoc_bound_ty),
+                        (&induce_in_placeholder, &in_bound_ty),
+                        (&induce_out_placeholder, &out_bound_ty),
+                    ],
+                );
+                let merge_variant_extra_where_preds = substitute_where_preds(
+                    &merge_variant_where_preds_src,
+                    &[
+                        (&induce_head_placeholder, &merge_var_head_ty),
+                        (&induce_tail_placeholder, &merge_var_tail_assoc_bound_ty),
+                        (&induce_in_placeholder, &in_bound_ty),
+                        (&induce_out_placeholder, &out_bound_ty),
+                    ],
+                );
+                let join_extra_where_preds = substitute_where_preds(
+                    &join_where_preds_src,
+                    &[
+                        (&induce_fields_placeholder, &join_fields_bound_ty),
+                        (&induce_in_placeholder, &in_bound_ty),
+                        (&induce_out_placeholder, &out_bound_ty),
+                    ],
+                );
+                let merge_extra_where_preds =
+                    lower_helper_projection_preds(merge_extra_where_preds, &helper_ident);
+                let merge_variant_extra_where_preds =
+                    lower_helper_projection_preds(merge_variant_extra_where_preds, &helper_ident);
+                let join_extra_where_preds =
+                    lower_helper_projection_preds(join_extra_where_preds, &helper_ident);
+                let join_extra_where_preds = join_extra_where_preds
+                    .into_iter()
+                    .filter(|pred| match pred {
+                        WherePredicate::Type(tp) => {
+                            !type_contains_helper_ret_projection(&tp.bounded_ty, &helper_ident)
+                        }
+                        _ => true,
+                    })
+                    .collect::<Vec<_>>();
                 Some(quote! {
                     pub trait #helper_ident<P: TruthValue = <Self as IsPrimitive<super::#property_ident>>::Is, In = (), Out = In #internal_trait_decl_generic_defs> {
                         type Ret #assoc_decl_generics #assoc_where_clause;
@@ -3706,7 +4143,7 @@ impl State {
                         type Ret #assoc_impl_generics = <T as super::#trait_ident #trait_generic_args>::#assoc_ident #assoc_proj_generics #assoc_where_clause;
                     }
 
-                    impl #helper_empty_impl_generics #helper_ident #helper_false_trait_args for #wrapper<#liferefelide List<()>> {
+                    impl #helper_empty_impl_generics #helper_ident #helper_false_trait_args for #wrapper<#liferefelide List<()>> #base_extra_where_clause {
                         type Ret #assoc_impl_generics = #base_ty #assoc_where_clause;
                     }
 
@@ -3720,6 +4157,7 @@ impl State {
                         F: Fields #phantom_bound,
                         <F as Fields>::Owned: Fields,
                         #merge_split_bound
+                        #(#merge_extra_where_preds,)*
                     {
                         type Ret #assoc_impl_generics = #merge_ty #assoc_where_clause;
                     }
@@ -3734,6 +4172,7 @@ impl State {
                         F: Fields #phantom_bound,
                         <F as Fields>::Owned: Fields,
                         #merge_var_split_bound
+                        #(#merge_variant_extra_where_preds,)*
                     {
                         type Ret #assoc_impl_generics = #merge_var_ty #assoc_where_clause;
                     }
@@ -3743,6 +4182,7 @@ impl State {
                     where
                         T: Inception<#property> + Meta,
                         #join_fields_ty: #helper_ident #helper_false_trait_args,
+                        #(#join_extra_where_preds,)*
                     {
                         type Ret #assoc_impl_generics = #join_ty #assoc_where_clause;
                     }
