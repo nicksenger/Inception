@@ -49,15 +49,6 @@ struct InduceSpec {
     join: InducePhaseSpec,
 }
 
-impl InduceSpec {
-    fn has_where_bounds(&self) -> bool {
-        !self.base.where_preds.is_empty()
-            || !self.merge.where_preds.is_empty()
-            || !self.merge_variant.where_preds.is_empty()
-            || !self.join.where_preds.is_empty()
-    }
-}
-
 #[derive(Clone)]
 struct AssocTypeSpec {
     item: TraitItemType,
@@ -2634,86 +2625,6 @@ impl State {
                     type_contains_helper_ret_projection(g.elem.as_ref(), helper_ident)
                 }
                 _ => false,
-            }
-        }
-        fn replace_helper_ret_projection(ty: &mut Type, helper_ident: &Ident, replacement: &Type) {
-            match ty {
-                Type::Path(TypePath { qself, path }) => {
-                    if let Some(q) = qself {
-                        replace_helper_ret_projection(q.ty.as_mut(), helper_ident, replacement);
-                    }
-                    for seg in path.segments.iter_mut() {
-                        match &mut seg.arguments {
-                            syn::PathArguments::AngleBracketed(args) => {
-                                for arg in args.args.iter_mut() {
-                                    match arg {
-                                        syn::GenericArgument::Type(inner) => {
-                                            replace_helper_ret_projection(
-                                                inner,
-                                                helper_ident,
-                                                replacement,
-                                            )
-                                        }
-                                        syn::GenericArgument::AssocType(assoc) => {
-                                            replace_helper_ret_projection(
-                                                &mut assoc.ty,
-                                                helper_ident,
-                                                replacement,
-                                            )
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                            syn::PathArguments::Parenthesized(args) => {
-                                for input in args.inputs.iter_mut() {
-                                    replace_helper_ret_projection(input, helper_ident, replacement);
-                                }
-                                if let ReturnType::Type(_, out) = &mut args.output {
-                                    replace_helper_ret_projection(
-                                        out.as_mut(),
-                                        helper_ident,
-                                        replacement,
-                                    );
-                                }
-                            }
-                            syn::PathArguments::None => {}
-                        }
-                    }
-                    if qself.is_some() && path.segments.len() >= 2 {
-                        let assoc_seg = path.segments.last().map(|s| s.ident.clone());
-                        let helper_seg = path.segments.iter().rev().nth(1).map(|s| s.ident.clone());
-                        if let (Some(assoc_seg), Some(helper_seg)) = (assoc_seg, helper_seg) {
-                            if helper_seg == *helper_ident && assoc_seg == "Ret" {
-                                *ty = replacement.clone();
-                            }
-                        }
-                    }
-                }
-                Type::Reference(r) => {
-                    replace_helper_ret_projection(r.elem.as_mut(), helper_ident, replacement)
-                }
-                Type::Ptr(p) => {
-                    replace_helper_ret_projection(p.elem.as_mut(), helper_ident, replacement)
-                }
-                Type::Slice(s) => {
-                    replace_helper_ret_projection(s.elem.as_mut(), helper_ident, replacement)
-                }
-                Type::Array(a) => {
-                    replace_helper_ret_projection(a.elem.as_mut(), helper_ident, replacement)
-                }
-                Type::Tuple(t) => {
-                    for elem in t.elems.iter_mut() {
-                        replace_helper_ret_projection(elem, helper_ident, replacement);
-                    }
-                }
-                Type::Paren(p) => {
-                    replace_helper_ret_projection(p.elem.as_mut(), helper_ident, replacement)
-                }
-                Type::Group(g) => {
-                    replace_helper_ret_projection(g.elem.as_mut(), helper_ident, replacement)
-                }
-                _ => {}
             }
         }
         fn lower_helper_projection_pred(
